@@ -1,5 +1,5 @@
 name: localdrop
-description: LocalDrop cross-platform UI prototype.
+description: LocalDrop – offline, original-quality photo and video sharing over local Wi-Fi.
 publish_to: "none"
 version: 1.0.0+1
 
@@ -10,12 +10,40 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  google_fonts: ^6.2.1
+  provider: ^6.1.5+1
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.5.0
+  image_picker: ^1.2.4
+  video_player: ^2.14.1
+  gal: ^2.3.3
+  path_provider: ^2.1.6
+  crypto: ^3.0.8
+  ffi: ^2.2.0
+  shared_preferences: ^2.5.6
+  share_plus: ^13.3.1
+  localdrop_engine:
+    path: packages/localdrop_engine
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  shared_preferences_platform_interface: ^2.4.2
 
 flutter:
   uses-material-design: true
+  # Bundled so the app looks right without internet (no runtime font fetching).
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 900

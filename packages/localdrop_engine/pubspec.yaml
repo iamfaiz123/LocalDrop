@@ -1,0 +1,20 @@
+name: localdrop_engine
+description: Ships the LocalDrop Rust engine binary (liblocaldrop_engine) to Android and iOS apps.
+version: 0.1.0
+publish_to: "none"
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
