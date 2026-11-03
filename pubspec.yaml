@@ -23,6 +23,7 @@ dependencies:
   share_plus: ^13.3.1
   localdrop_engine:
     path: packages/localdrop_engine
+  google_mobile_ads: ^9.2.0
 
 dev_dependencies:
   flutter_test:

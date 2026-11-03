@@ -1,7 +1,8 @@
 # LocalDrop
 
 Offline, original-quality photo and video sharing over a local Wi-Fi network or phone hotspot.
-No internet, cloud, accounts or compression.
+No internet, cloud, accounts or compression. The app is ad-supported: ads load only when the device
+happens to have internet and never affect sharing ([docs/ADS.md](docs/ADS.md)).
 
 One person **hosts** a session on their phone. Friends join their hotspot, scan the QR code
 (or type the address / PIN) and everyone can upload, browse and download originals. Participants
@@ -36,6 +37,7 @@ can use the LocalDrop app **or any mobile browser**: the host serves a bundled w
 * [docs/BUILD.md](docs/BUILD.md) – building, running and testing
 * [docs/STATUS.md](docs/STATUS.md) – what is implemented, what is verified, known limitations
 * [docs/SECURITY.md](docs/SECURITY.md) – security model and boundaries
+* [docs/ADS.md](docs/ADS.md) – ad placements, consent and switching to real AdMob IDs
 
 ## Quick start (development)
 ```bash

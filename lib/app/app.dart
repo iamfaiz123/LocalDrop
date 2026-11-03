@@ -9,6 +9,7 @@ import '../providers/gallery_controller.dart';
 import '../providers/session_controller.dart';
 import '../screens/landing_screen.dart';
 import '../screens/session_shell.dart';
+import '../services/ads.dart';
 import '../services/download_manager.dart';
 import '../services/engine_service.dart';
 import '../services/media_saver.dart';
@@ -23,8 +24,9 @@ class AppServices {
   final GalleryController gallery;
   final UploadManager uploads;
   final DownloadManager downloads;
+  final AdService ads;
 
-  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads);
+  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads, this.ads);
 
   factory AppServices.create({
     required EngineService engine,
@@ -34,6 +36,7 @@ class AppServices {
     required Future<Directory> Function() workDir,
     String? tempDir,
     NativeBridge native = const NativeBridge(),
+    AdService? ads,
   }) {
     final gallery = GalleryController();
     final uploads = UploadManager(
@@ -51,7 +54,7 @@ class AppServices {
       downloads: downloads,
       native: native,
     );
-    return AppServices._(prefs, session, gallery, uploads, downloads);
+    return AppServices._(prefs, session, gallery, uploads, downloads, ads ?? NoAdService());
   }
 
   /// Production wiring.
@@ -65,6 +68,7 @@ class AppServices {
       dataDir: () async => '${support.path}/localdrop',
       workDir: () async => tmp,
       tempDir: tmp.path,
+      ads: createAdService(),
     );
   }
 }
@@ -85,6 +89,7 @@ class LocalDropApp extends StatelessWidget {
           ChangeNotifierProvider.value(value: services.gallery),
           ChangeNotifierProvider.value(value: services.uploads),
           ChangeNotifierProvider.value(value: services.downloads),
+          ChangeNotifierProvider<AdService>.value(value: services.ads),
         ],
         child: MaterialApp(
           title: 'LocalDrop',

@@ -23,6 +23,9 @@ android {
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
         // flag during build.
+        // AdMob app id: pass -PadmobAppId=ca-app-pub-XXXX~YYYY for production builds.
+        manifestPlaceholders["admobAppId"] =
+            (project.findProperty("admobAppId") as String?) ?: "ca-app-pub-3940256099942544~3347511713"
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

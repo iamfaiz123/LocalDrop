@@ -61,7 +61,8 @@ class ConnectionChip extends StatelessWidget {
 class AppFrame extends StatelessWidget {
   final Widget child;
   final bool showBack;
-  const AppFrame({super.key, required this.child, this.showBack = true});
+  final Widget? bottom;
+  const AppFrame({super.key, required this.child, this.showBack = true, this.bottom});
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -80,6 +81,7 @@ class AppFrame extends StatelessWidget {
             Expanded(child: child),
           ]),
         ),
+        bottomNavigationBar: bottom,
       );
 }
 

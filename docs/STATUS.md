@@ -22,6 +22,11 @@
 * `image_picker` is assumed to return original bytes when no resize/quality options are passed;
   confirm byte-identity (SHA-256) on devices, especially iOS HEIC and Android videos.
 
+## Ads
+* AdMob banners/interstitial and UMP consent are wired with Google **test IDs**; real IDs must be supplied
+  (docs/ADS.md). Verified by tests: no layout space and no SDK calls when ads are unavailable, interstitial
+  only at the session-end break. Real ad loading has not been seen on a device (no Android/iOS build here).
+
 ## Known limitations
 * **iOS hosting**: iOS suspends apps in the background; the server only runs while LocalDrop is in the
   foreground (plus a short background grace period). iOS hosting must be validated before it is offered.

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- LocalDrop talks to other phones on the local network over plain HTTP
      (there is no internet or certificate authority on a hotspot). Cleartext is
-     permitted for that purpose; the app never contacts internet hosts. -->
+     permitted for that purpose. The only internet traffic is advertising
+     (Google Mobile Ads, HTTPS) when a connection happens to be available. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

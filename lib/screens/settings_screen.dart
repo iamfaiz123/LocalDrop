@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/gallery_controller.dart';
 import '../providers/session_controller.dart';
+import '../services/ads.dart';
 import '../services/api_client.dart';
 import '../services/upload_manager.dart';
 import '../theme.dart';
@@ -217,7 +218,9 @@ class _ParticipantSession extends StatelessWidget {
                 confirm: 'Leave',
                 destructive: true);
             if (!ok || !context.mounted) return;
+            final ads = context.read<AdService>();
             await s.leave();
+            await ads.showInterstitialAtBreak();
             if (context.mounted) {
               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LandingScreen()), (_) => false);
             }

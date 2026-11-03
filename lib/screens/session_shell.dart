@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../providers/session_controller.dart';
 import '../theme.dart';
+import '../services/ads.dart';
+import '../widgets/ad_banner.dart';
 import '../widgets/ui.dart';
 import 'common.dart';
 import 'dashboard_screen.dart';
@@ -80,33 +82,37 @@ class SessionShellState extends State<SessionShell> with WidgetsBindingObserver 
             Expanded(child: IndexedStack(index: tab, children: pages)),
           ]),
         ),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 64,
-              child: Row(children: [
-                for (var i = 0; i < names.length; i++)
-                  Expanded(
-                    child: GestureDetector(
-                      key: Key('tab-$i'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => select(i),
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-                          decoration: BoxDecoration(
-                              color: tab == i ? AppColors.lavender : Colors.transparent, borderRadius: BorderRadius.circular(13)),
-                          child: _TabLabel(name: names[i], selected: tab == i, badge: i == 1 ? _transferBadge(context) : 0),
+        bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Not on host controls; never in the viewer, join flow or QR screen.
+          Offstage(offstage: tab == 3, child: const AdBanner()),
+          Container(
+            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 64,
+                child: Row(children: [
+                  for (var i = 0; i < names.length; i++)
+                    Expanded(
+                      child: GestureDetector(
+                        key: Key('tab-$i'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => select(i),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                            decoration: BoxDecoration(
+                                color: tab == i ? AppColors.lavender : Colors.transparent, borderRadius: BorderRadius.circular(13)),
+                            child: _TabLabel(name: names[i], selected: tab == i, badge: i == 1 ? _transferBadge(context) : 0),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ]),
+                ]),
+              ),
             ),
           ),
-        ),
+        ]),
       ),
     );
   }
@@ -160,8 +166,11 @@ class _EndedView extends StatelessWidget {
             PrimaryButton(
               label: 'Back to home',
               icon: Icons.home_outlined,
-              onPressed: () {
+              onPressed: () async {
+                // Natural break: the session is over, nothing is transferring.
+                await context.read<AdService>().showInterstitialAtBreak();
                 controller.acknowledgeEnd();
+                if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LandingScreen()), (_) => false);
               },
             ),

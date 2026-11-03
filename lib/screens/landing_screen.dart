@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/session_controller.dart';
+import '../services/ads.dart';
 import '../theme.dart';
 import '../utils/format.dart';
+import '../widgets/ad_banner.dart';
 import '../widgets/ui.dart';
 import 'common.dart';
 import 'create_session_screen.dart';
@@ -19,6 +21,7 @@ class LandingScreen extends StatelessWidget {
     final resumable = s.resumableHostSession;
     return AppFrame(
       showBack: false,
+      bottom: const AdBanner(),
       child: PageShell(
         title: 'Share moments.\nKeep every detail.',
         subtitle: 'Original-quality photo and video sharing, right nearby.',
@@ -97,6 +100,11 @@ class LandingScreen extends StatelessWidget {
             icon: Icons.qr_code_scanner,
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinSessionScreen())),
           ),
+          if (context.watch<AdService>().privacyOptionsRequired)
+            TextButton(
+              onPressed: () => context.read<AdService>().showPrivacyOptions(),
+              child: const Text('Ad privacy settings', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+            ),
         ]),
       ),
     );

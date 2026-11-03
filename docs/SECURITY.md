@@ -18,5 +18,8 @@
   and thumbnails. Per-IP rate limiting covers all requests.
 * Web client: strict CSP (`default-src 'none'`, no inline script), `nosniff`, `X-Frame-Options: DENY`,
   `no-referrer`; all assets are bundled (no CDN).
+* Ads: the Google Mobile Ads SDK (app only, not the browser client) contacts Google over HTTPS when
+  internet is available and may use the advertising ID subject to consent. It has no access to
+  session media, tokens or the LAN API. No user media ever leaves the local network.
 * Temp upload data is removed on cancel, expiry and session end. Media is kept unless the host
   chooses to delete it (with confirmation).
