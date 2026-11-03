@@ -295,7 +295,7 @@ async fn zip_export_with_range() {
         names.push(f.name().to_string());
         let mut buf = vec![];
         f.read_to_end(&mut buf).unwrap(); // verifies CRC-32
-        assert!(files.iter().any(|x| *x == buf));
+        assert!(files.contains(&buf));
     }
     names.sort();
     assert_eq!(names, vec!["clip.mp4", "same (2).jpg", "same.jpg"]);

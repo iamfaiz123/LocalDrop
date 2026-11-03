@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -18,6 +19,16 @@ enum SessionRole { none, host, participant }
 enum SessionPhase { idle, starting, pending, active, ended, removed }
 
 enum StartStepState { pending, running, done, warning, failed }
+
+/// A session this device still belongs to but is not attached to right now
+/// (host server could not be restarted, or the host is unreachable).
+/// While set, creating or joining another session is not allowed.
+class LockedSession {
+  final SessionRole role;
+  final String name;
+  final String reason;
+  const LockedSession(this.role, this.name, this.reason);
+}
 
 class StartStep {
   final String label;
@@ -73,7 +84,7 @@ class SessionController extends ChangeNotifier {
   bool networkOk = false;
 
   List<StartStep> steps = [];
-  StoredSession? resumableHostSession;
+  LockedSession? locked;
 
   Timer? _pendingPoll;
   Timer? _peopleDebounce;
@@ -81,15 +92,65 @@ class SessionController extends ChangeNotifier {
   Stream<ServerEvent> get events => _events.stream;
 
   bool get isHost => role == SessionRole.host;
+
+  /// True while this device belongs to a session (attached or not). Only one
+  /// session at a time: Create/Join are unavailable until it is ended (host)
+  /// or left (participant).
+  bool get hasSession =>
+      locked != null || phase == SessionPhase.starting || phase == SessionPhase.pending || phase == SessionPhase.active;
   bool get inSession => phase == SessionPhase.active;
   int get activeMembers => participants.where((p) => p.isActive).length;
   List<Participant> get pendingRequests => participants.where((p) => p.isPending).toList();
 
   // ------------------------------------------------------------------ startup
 
-  /// Restores state after a cold start. Returns true if back in a session.
+  /// Restores state when the app UI starts. Returns true if attached to a
+  /// session (the UI then opens it directly).
+  ///
+  /// 1. Host server still running in this process (app was closed, the
+  ///    background service kept it alive) → re-attach.
+  /// 2. Host session recorded but the server is not running (process was
+  ///    killed) → restart it automatically with the same PIN and data.
+  /// 3. Participant session recorded → reconnect to the host.
+  /// If 2/3 fail, the session stays [locked] until the user ends/leaves it.
   Future<bool> restore() async {
-    final p = await prefs.participantSession();
+    locked = null;
+    final recordedHost = await prefs.hostSessionId();
+    final recordedGuest = await prefs.participantSession();
+    try {
+      final st = await engine.status();
+      final running = st.session;
+      // Only re-attach to a server this device is recorded as hosting.
+      if (st.running && !st.ended && running != null && (recordedHost == running.sessionId || recordedGuest == null)) {
+        await _attachHost(running);
+        return true;
+      }
+    } on Exception catch (e) {
+      debugPrint('LocalDrop: engine status unavailable: $e');
+    }
+
+    final name = await prefs.activeSessionName() ?? 'your session';
+    final hostId = recordedHost;
+    if (hostId != null) {
+      try {
+        final stored = await engine.storedSessions(await dataDir());
+        final s = stored.where((x) => x.id == hostId).firstOrNull;
+        if (s == null || s.ended) {
+          await _clearMembership();
+          notifyListeners();
+          return false;
+        }
+      } on EngineException {
+        // fall through and try to start it anyway
+      }
+      if (await createSession(sessionName: name, hostName: '', resumeId: hostId)) return true;
+      final why = steps.where((x) => x.state == StartStepState.failed).map((x) => x.detail).firstOrNull;
+      locked = LockedSession(SessionRole.host, name, 'Your session could not be restarted${why == null ? '' : ': $why'}');
+      notifyListeners();
+      return false;
+    }
+
+    final p = recordedGuest;
     if (p != null) {
       final client = ApiClient(Uri.parse(p.base), token: p.token);
       try {
@@ -98,28 +159,69 @@ class SessionController extends ChangeNotifier {
           await _enterParticipant(client, meP, info);
           return true;
         }
+        if (info.id == p.sessionId && meP.isPending) {
+          role = SessionRole.participant;
+          api = client;
+          me = meP;
+          session = info;
+          phase = SessionPhase.pending;
+          _pollApproval(client);
+          notifyListeners();
+          return false;
+        }
         client.close();
+        await _clearMembership();
       } on ApiException catch (e) {
         client.close();
-        if (!e.isNetwork) await prefs.clearParticipantSession();
-      }
-    }
-    final hostId = await prefs.hostSessionId();
-    if (hostId != null) {
-      try {
-        final st = await engine.status();
-        if (!st.running) {
-          final dir = await dataDir();
-          final stored = await engine.storedSessions(dir);
-          resumableHostSession = stored.where((s) => s.id == hostId && !s.ended).firstOrNull;
-          if (resumableHostSession == null) await prefs.setHostSessionId(null);
+        if (e.isNetwork) {
+          locked = LockedSession(SessionRole.participant, name,
+              'Can’t reach the host right now. Reconnect to the host’s hotspot or Wi-Fi and tap Reconnect.');
+        } else {
+          await _clearMembership();
         }
-      } on EngineException {
-        resumableHostSession = null;
       }
     }
     notifyListeners();
     return false;
+  }
+
+  Future<void> _clearMembership() async {
+    await prefs.clearParticipantSession();
+    await prefs.setHostSessionId(null);
+    await prefs.setActiveSessionName(null);
+    locked = null;
+  }
+
+  /// Ends a host session that could not be restarted. Tries to restart it so
+  /// participants are told; the media stays on the device either way.
+  Future<void> endLockedSession() async {
+    final l = locked;
+    if (l == null) return;
+    if (l.role == SessionRole.host) {
+      final id = await prefs.hostSessionId();
+      if (id != null && await createSession(sessionName: l.name, hostName: '', resumeId: id)) {
+        await endSession(deleteMedia: false);
+        acknowledgeEnd();
+        return;
+      }
+      await native.stopHostingService();
+    } else {
+      final p = await prefs.participantSession();
+      if (p != null) {
+        final client = ApiClient(Uri.parse(p.base), token: p.token, timeout: const Duration(seconds: 4));
+        try {
+          await client.leave();
+        } on ApiException {
+          // host unreachable: leave locally
+        } finally {
+          client.close();
+        }
+      }
+    }
+    await _clearMembership();
+    phase = SessionPhase.idle;
+    role = SessionRole.none;
+    notifyListeners();
   }
 
   Future<List<NetworkInterfaceInfo>> checkNetwork() async {
@@ -142,6 +244,12 @@ class SessionController extends ChangeNotifier {
     bool requireApproval = false,
     String? resumeId,
   }) async {
+    if (resumeId == null && hasSession) {
+      steps = [StartStep('Checking network')..state = StartStepState.failed
+        ..detail = 'You are already in a session. End or leave it before creating a new one.'];
+      notifyListeners();
+      return false;
+    }
     steps = [StartStep('Checking network'), StartStep('Starting local server'), StartStep('Preparing gallery')];
     phase = SessionPhase.starting;
     role = SessionRole.host;
@@ -180,19 +288,8 @@ class SessionController extends ChangeNotifier {
       });
       current = 2;
       await run(current, (s) async {
-        final h = host!;
-        final client = ApiClient(Uri.parse(h.localUrl), token: h.hostToken);
-        final (meP, info) = await client.me();
-        hostUrls = h.urls;
-        joinUrl = h.joinUrl;
-        networkOk = h.networkOk;
-        interfaces = h.addresses;
-        await prefs.setHostSessionId(h.sessionId);
         if (hostName.isNotEmpty) await prefs.setLastName(hostName);
-        resumableHostSession = null;
-        await _enterSession(client, meP, info);
-        downloads.attach(client, localPath: (m) => '${h.sessionDir}/media/${m.id}.${m.ext}');
-        await native.startHostingService(info.name);
+        await _attachHost(host!);
       });
       return true;
     } catch (e) {
@@ -209,11 +306,24 @@ class SessionController extends ChangeNotifier {
     }
   }
 
-  Future<void> forgetHostSession(String id, {required bool deleteData}) async {
-    if (deleteData) await engine.deleteSession(await dataDir(), id);
-    await prefs.setHostSessionId(null);
-    resumableHostSession = null;
-    notifyListeners();
+  /// Connects the UI to the running host server and keeps it alive in the
+  /// background until the host ends the session.
+  Future<void> _attachHost(HostSession h) async {
+    host = h;
+    role = SessionRole.host;
+    final client = ApiClient(Uri.parse(h.localUrl), token: h.hostToken);
+    final (meP, info) = await client.me();
+    hostUrls = h.urls;
+    joinUrl = h.joinUrl;
+    networkOk = h.networkOk;
+    interfaces = h.addresses;
+    locked = null;
+    await prefs.setHostSessionId(h.sessionId);
+    await prefs.setActiveSessionName(info.name);
+    await _enterSession(client, meP, info);
+    downloads.attach(client, localPath: (m) => '${h.sessionDir}/media/${m.id}.${m.ext}');
+    final resume = jsonEncode({'data_dir': await dataDir(), 'resume_session_id': h.sessionId});
+    await native.startHostingService(info.name, resumeConfig: resume);
   }
 
   // ------------------------------------------------------------------ participant
@@ -243,11 +353,15 @@ class SessionController extends ChangeNotifier {
 
   /// Joins a session. Returns the participant status (`active` / `pending`).
   Future<String> join(Uri base, {required String name, required String pin}) async {
+    if (hasSession) {
+      throw const ApiException(0, 'already_in_session', 'You are already in a session. Leave it before joining another one.');
+    }
     final client = ApiClient(base);
     try {
       final (meP, info) = await client.join(name: name, pin: pin, deviceId: await prefs.deviceId());
       await prefs.setLastName(name);
       await prefs.setParticipantSession(base.toString(), client.token!, info.id);
+      await prefs.setActiveSessionName(info.name);
       role = SessionRole.participant;
       if (meP.isPending) {
         api = client;
@@ -296,7 +410,7 @@ class SessionController extends ChangeNotifier {
       // already gone
     }
     await _teardown();
-    await prefs.clearParticipantSession();
+    await _clearMembership();
     phase = SessionPhase.idle;
     role = SessionRole.none;
     notifyListeners();
@@ -377,7 +491,7 @@ class SessionController extends ChangeNotifier {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await engine.stop();
     await native.stopHostingService();
-    await prefs.setHostSessionId(null);
+    await _clearMembership();
     _finish(SessionPhase.ended, deleteMedia ? 'Session ended. Shared media was deleted.' : 'Session ended. Media was kept on this device.');
   }
 
@@ -388,7 +502,7 @@ class SessionController extends ChangeNotifier {
     } on ApiException {
       // leaving anyway
     }
-    await prefs.clearParticipantSession();
+    await _clearMembership();
     await _teardown();
     phase = SessionPhase.idle;
     role = SessionRole.none;
@@ -412,7 +526,7 @@ class SessionController extends ChangeNotifier {
   }
 
   void _finish(SessionPhase p, String message) {
-    if (role == SessionRole.participant) unawaited(prefs.clearParticipantSession());
+    if (role == SessionRole.participant) unawaited(_clearMembership());
     unawaited(_teardown());
     phase = p;
     endedMessage = message;

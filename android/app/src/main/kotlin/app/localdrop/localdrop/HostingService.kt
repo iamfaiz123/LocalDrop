@@ -12,14 +12,23 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
 /**
- * Foreground service that keeps the host process (and with it the Rust
- * server running in-process) alive while a session is active. Holds a
- * Wi-Fi lock and a partial wake lock so transfers continue with the screen
- * off. It does not control the hotspot — the user enables that manually.
+ * Keeps a hosted session running while the LocalDrop UI is closed.
+ *
+ * The Rust server lives in the app process (not in the Flutter UI), so it
+ * keeps serving after the activity is closed or swiped away as long as this
+ * foreground service keeps the process alive. The session only stops when the
+ * host ends it in the app ("stopHosting" clears the saved config).
+ *
+ * If Android kills and later recreates the process (START_STICKY), the
+ * service restarts the server itself through JNI with the saved resume
+ * config — same session, PIN and media — before any UI is opened.
+ * Holds a Wi-Fi lock and a partial wake lock so transfers continue with the
+ * screen off. It never controls the hotspot.
  */
 class HostingService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
@@ -28,25 +37,64 @@ class HostingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra(EXTRA_TITLE) ?: "LocalDrop"
-        createChannel()
+        val saved = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        intent?.getStringExtra(EXTRA_CONFIG)?.let { config ->
+            saved.edit()
+                .putString(KEY_CONFIG, config)
+                .putString(KEY_TITLE, intent.getStringExtra(EXTRA_TITLE) ?: "LocalDrop")
+                .apply()
+        }
+        val config = saved.getString(KEY_CONFIG, null)
+        val title = saved.getString(KEY_TITLE, null) ?: intent?.getStringExtra(EXTRA_TITLE) ?: "LocalDrop"
+        if (config == null) {
+            // No session to keep alive (it was ended).
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            createChannel()
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(title), type)
+        } catch (e: Exception) {
+            // e.g. Android 12+ refusing a foreground start from the background.
+            Log.w(TAG, "Could not enter foreground; the session resumes when the app is opened", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        acquireLocks()
+        ensureServerRunning(config)
+        return START_STICKY
+    }
+
+    /** Restarts the server if the process was recreated without the UI. */
+    private fun ensureServerRunning(config: String) {
+        if (!loadEngine()) return
+        Thread {
+            try {
+                if (!nativeIsRunning()) {
+                    val result = nativeStart(config)
+                    Log.i(TAG, "Restarted hosted session: $result")
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed to restart hosted session", e)
+            }
+        }.start()
+    }
+
+    private fun buildNotification(title: String): Notification {
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
+        return NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Hosting “$title”")
-            .setContentText("Friends on your hotspot can share photos and videos. Tap to open.")
+            .setContentText("Your session keeps running. Open LocalDrop to end it.")
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
             .setContentIntent(open)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
-        acquireLocks()
-        return START_NOT_STICKY
     }
 
     private fun acquireLocks() {
@@ -60,7 +108,7 @@ class HostingService : Service() {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LocalDrop:hosting").apply {
                 setReferenceCounted(false)
-                acquire(12 * 60 * 60 * 1000L) // safety cap: 12 h
+                acquire()
             }
         }
     }
@@ -88,7 +136,36 @@ class HostingService : Service() {
 
     companion object {
         const val EXTRA_TITLE = "title"
+        const val EXTRA_CONFIG = "config"
+        private const val TAG = "LocalDrop"
+        private const val PREFS = "localdrop_hosting"
+        private const val KEY_CONFIG = "config"
+        private const val KEY_TITLE = "title"
         private const val CHANNEL = "hosting"
         private const val NOTIFICATION_ID = 7
+        private var engineLoaded = false
+
+        fun clearSaved(context: Context) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        }
+
+        @Synchronized
+        private fun loadEngine(): Boolean {
+            if (!engineLoaded) {
+                engineLoaded = try {
+                    System.loadLibrary("localdrop_engine")
+                    true
+                } catch (e: UnsatisfiedLinkError) {
+                    Log.e(TAG, "Engine library missing", e)
+                    false
+                }
+            }
+            return engineLoaded
+        }
+
+        /** Implemented in Rust (native/engine/src/ffi.rs, `android` module). */
+        @JvmStatic external fun nativeStart(config: String): String
+
+        @JvmStatic external fun nativeIsRunning(): Boolean
     }
 }

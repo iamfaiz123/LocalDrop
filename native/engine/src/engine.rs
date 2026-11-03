@@ -70,6 +70,13 @@ impl RunningEngine {
             "join_url": self.state.join_url(),
             "addresses": self.state.addresses(),
             "network_ok": net::primary(&self.state.addresses()).is_some(),
+            // Lets a re-launched UI (same process) re-attach as host.
+            "session": StartedSession {
+                urls: self.state.urls(),
+                join_url: self.state.join_url(),
+                addresses: self.state.addresses(),
+                ..self.info.clone()
+            },
         })
     }
 }

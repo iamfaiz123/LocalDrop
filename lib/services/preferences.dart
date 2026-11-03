@@ -46,6 +46,10 @@ class Preferences {
   Future<String?> hostSessionId() => _p.getString('h_session');
   Future<void> setHostSessionId(String? id) => id == null ? _p.remove('h_session') : _p.setString('h_session', id);
 
+  /// Display name of the session we belong to (shown while reconnecting).
+  Future<String?> activeSessionName() => _p.getString('active_name');
+  Future<void> setActiveSessionName(String? v) => v == null ? _p.remove('active_name') : _p.setString('active_name', v);
+
   Future<String?> getRaw(String key) => _p.getString(key);
   Future<void> setRaw(String key, String value) => _p.setString(key, value);
 }

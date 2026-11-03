@@ -52,37 +52,41 @@ fn guarded(f: impl FnOnce() -> *mut c_char) -> *mut c_char {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| err("internal panic in engine"))
 }
 
+/// Starts a session from a JSON [`EngineConfig`]. Shared by the C ABI and
+/// the Android JNI entry point (used when the hosting service restarts the
+/// server without any UI).
+pub fn start_from_json(raw: &str) -> Value {
+    let cfg: EngineConfig = match serde_json::from_str(raw) {
+        Ok(c) => c,
+        Err(e) => return json!({ "ok": false, "error": format!("invalid config: {e}") }),
+    };
+    let mut slot = ENGINE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(running) = slot.take() {
+        if running.is_running() && !running.state.is_ended() {
+            let info = running.info.clone();
+            *slot = Some(running);
+            return json!({ "ok": false, "error": "a session is already running", "code": "already_running", "session_id": info.session_id });
+        }
+    }
+    match runtime().block_on(engine::start(cfg)) {
+        Ok(running) => {
+            let info = serde_json::to_value(&running.info).unwrap_or_default();
+            *slot = Some(running);
+            json!({ "ok": true, "session": info })
+        }
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
 /// Starts a session. `config_json` follows [`EngineConfig`].
 ///
 /// # Safety
 /// `config_json` must be a valid NUL-terminated UTF-8 string.
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_start(config_json: *const c_char) -> *mut c_char {
-    guarded(|| {
-        let raw = match arg(config_json) {
-            Ok(s) => s,
-            Err(e) => return err(e),
-        };
-        let cfg: EngineConfig = match serde_json::from_str(&raw) {
-            Ok(c) => c,
-            Err(e) => return err(format!("invalid config: {e}")),
-        };
-        let mut slot = ENGINE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(running) = slot.take() {
-            if running.is_running() && !running.state.is_ended() {
-                let info = running.info.clone();
-                *slot = Some(running);
-                return out(json!({ "ok": false, "error": "a session is already running", "session_id": info.session_id }));
-            }
-        }
-        match runtime().block_on(engine::start(cfg)) {
-            Ok(running) => {
-                let info = serde_json::to_value(&running.info).unwrap_or_default();
-                *slot = Some(running);
-                out(json!({ "ok": true, "session": info }))
-            }
-            Err(e) => err(e),
-        }
+    guarded(|| match arg(config_json) {
+        Ok(raw) => out(start_from_json(&raw)),
+        Err(e) => err(e),
     })
 }
 
@@ -164,5 +168,40 @@ pub unsafe extern "C" fn ld_delete_session(data_dir: *const c_char, session_id: 
 pub unsafe extern "C" fn ld_string_free(p: *mut c_char) {
     if !p.is_null() {
         drop(CString::from_raw(p));
+    }
+}
+
+/// Android: lets `HostingService` (Kotlin) restart the server after the OS
+/// recreated the process, before/without any Flutter UI.
+#[cfg(any(target_os = "android", feature = "jni-check"))]
+pub mod android {
+    use jni::objects::{JClass, JString};
+    use jni::sys::jstring;
+    use jni::JNIEnv;
+
+    #[no_mangle]
+    pub extern "system" fn Java_app_localdrop_localdrop_HostingService_nativeStart<'local>(
+        mut env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        config: JString<'local>,
+    ) -> jstring {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let raw: String = match env.get_string(&config) {
+                Ok(s) => s.into(),
+                Err(e) => return serde_json::json!({ "ok": false, "error": format!("bad config string: {e}") }),
+            };
+            super::start_from_json(&raw)
+        }))
+        .unwrap_or_else(|_| serde_json::json!({ "ok": false, "error": "internal panic in engine" }));
+        env.new_string(result.to_string()).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_app_localdrop_localdrop_HostingService_nativeIsRunning<'local>(
+        _env: JNIEnv<'local>,
+        _class: JClass<'local>,
+    ) -> jni::sys::jboolean {
+        let slot = super::ENGINE.lock().unwrap_or_else(|e| e.into_inner());
+        slot.as_ref().is_some_and(|r| r.is_running() && !r.state.is_ended()) as jni::sys::jboolean
     }
 }

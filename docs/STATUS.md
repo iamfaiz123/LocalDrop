@@ -27,6 +27,25 @@
   (docs/ADS.md). Verified by tests: no layout space and no SDK calls when ads are unavailable, interstitial
   only at the session-end break. Real ad loading has not been seen on a device (no Android/iOS build here).
 
+## Session lifetime (one session per device)
+* A device belongs to at most one session. While it does, Home shows that session instead of
+  Create/Join, and `SessionController` refuses to create or join another (`already_in_session`).
+* **Host:** the session runs until the host taps *End Session*. Closing or swiping away the app does not
+  stop it: the Rust server runs in the app process, kept alive by an Android foreground service
+  (`connectedDevice` type, no time limit, Wi-Fi + wake locks). Reopening the app re-attaches to the
+  running server. If Android kills the process, the service (START_STICKY) restarts the server natively
+  via JNI with the same session, PIN and media; if that is not possible the app restarts it automatically
+  on next launch. If even that fails, Home shows the session with *Reconnect* / *End session*.
+* **Participant:** stays a member until *Leave*. Reopening reconnects automatically; if the host is
+  unreachable Home shows *Reconnect* / *Leave session*. Unfinished uploads resume after reconnecting.
+* Verified by FFI integration tests (reopen, simulated process kill, lock, leave/end unlock). The Android
+  service/JNI restart path is unverified until the app is built and run on a device. Some vendors
+  (Xiaomi, Huawei, Samsung "sleeping apps") kill background apps aggressively; users may need to exempt
+  LocalDrop from battery optimisation.
+* **iOS cannot keep a server running after the app is closed.** On iPhone the session is kept and
+  restarted automatically when the app is opened again, but participants cannot reach the host while it
+  is closed.
+
 ## Known limitations
 * **iOS hosting**: iOS suspends apps in the background; the server only runs while LocalDrop is in the
   foreground (plus a short background grace period). iOS hosting must be validated before it is offered.

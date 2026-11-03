@@ -14,6 +14,7 @@ import 'package:localdrop/providers/session_controller.dart';
 import 'package:localdrop/services/api_client.dart';
 import 'package:localdrop/services/download_manager.dart';
 import 'package:localdrop/services/engine_service.dart';
+import 'package:localdrop/services/preferences.dart';
 import 'package:localdrop/services/realtime_service.dart';
 import 'package:localdrop/services/upload_manager.dart';
 
@@ -208,4 +209,76 @@ void main() {
     await waitFor(() => guestC.phase == SessionPhase.ended, reason: 'session_ended event');
     expect(guestC.endedMessage, contains('ended'));
   }, skip: skip, timeout: const Timeout(Duration(minutes: 2)));
+
+  group('one session per device, kept until ended or left', () {
+    SessionController newController(Preferences prefs, String dir) => SessionController(
+          engine: engine,
+          prefs: prefs,
+          dataDir: () async => dir,
+          gallery: GalleryController(),
+          uploads: UploadManager(store: MemoryUploadStore()),
+          downloads: DownloadManager(saver: FolderSaver(tmp), workDir: () async => tmp),
+        );
+
+    test('host: reopen re-attaches, killed process auto-resumes, end unlocks', () async {
+      final prefs = memoryPreferences();
+      final dir = '${tmp.path}/data';
+      final first = newController(prefs, dir);
+      expect(await first.createSession(sessionName: 'Goa', hostName: 'Aarav'), isTrue);
+      final pin = first.session!.pin;
+      final id = first.session!.id;
+
+      // Only one session: creating or joining another is refused.
+      expect(first.hasSession, isTrue);
+      expect(await first.createSession(sessionName: 'Other', hostName: 'Aarav'), isFalse);
+      await expectLater(first.join(Uri.parse(first.host!.localUrl), name: 'x', pin: pin!),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'already_in_session')));
+
+      // App UI closed and reopened while the server kept running.
+      final reopened = newController(prefs, dir);
+      expect(await reopened.restore(), isTrue);
+      expect(reopened.isHost, isTrue);
+      expect(reopened.session!.id, id);
+      expect(reopened.session!.pin, pin);
+
+      // Process killed by the OS: the next start restarts the same session.
+      await engine.stop();
+      final afterKill = newController(prefs, dir);
+      expect(await afterKill.restore(), isTrue);
+      expect(afterKill.session!.id, id);
+      expect(afterKill.session!.pin, pin, reason: 'participants rejoin with the same PIN');
+      expect((await engine.status()).running, isTrue);
+
+      // Ending it manually is the only way out.
+      await afterKill.endSession(deleteMedia: false);
+      final later = newController(prefs, dir);
+      expect(await later.restore(), isFalse);
+      expect(later.hasSession, isFalse);
+    }, skip: skip, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('participant: reconnects on reopen, stays locked while host is unreachable, leave unlocks', () async {
+      final h = await startHost();
+      final prefs = memoryPreferences();
+      final guest = newController(prefs, '${tmp.path}/guest');
+      final (base, _) = await guest.probe(h.localUrl);
+      expect(await guest.join(base, name: 'Riya', pin: h.pin), 'active');
+
+      final reopened = newController(prefs, '${tmp.path}/guest');
+      expect(await reopened.restore(), isTrue);
+      expect(reopened.isHost, isFalse);
+
+      await engine.stop(); // host unreachable
+      final offline = newController(prefs, '${tmp.path}/guest');
+      expect(await offline.restore(), isFalse);
+      expect(offline.locked?.role, SessionRole.participant);
+      expect(offline.hasSession, isTrue, reason: 'cannot create/join another session');
+      expect(await offline.createSession(sessionName: 'Mine', hostName: 'Riya'), isFalse);
+
+      await offline.endLockedSession();
+      expect(offline.hasSession, isFalse);
+      final fresh = newController(prefs, '${tmp.path}/guest');
+      expect(await fresh.restore(), isFalse);
+      expect(fresh.locked, isNull);
+    }, skip: skip, timeout: const Timeout(Duration(minutes: 2)));
+  });
 }

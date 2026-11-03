@@ -62,7 +62,11 @@ class EngineStatus {
   final String? joinUrl;
   final List<NetworkInterfaceInfo> addresses;
   final bool networkOk;
-  const EngineStatus(this.running, this.ended, this.urls, this.joinUrl, this.addresses, this.networkOk);
+
+  /// The running session (incl. host credentials) — lets a re-opened app
+  /// re-attach to a server that kept running in the background.
+  final HostSession? session;
+  const EngineStatus(this.running, this.ended, this.urls, this.joinUrl, this.addresses, this.networkOk, [this.session]);
 }
 
 /// Host-side engine lifecycle. Abstract so UI tests can use a fake.
@@ -157,6 +161,7 @@ class FfiEngineService implements EngineService {
       r['join_url'] as String?,
       ((r['addresses'] as List?) ?? const []).map((e) => NetworkInterfaceInfo.fromJson(e as Map<String, dynamic>)).toList(),
       r['network_ok'] == true,
+      r['session'] is Map<String, dynamic> ? HostSession.fromJson(r['session'] as Map<String, dynamic>) : null,
     );
   }
 

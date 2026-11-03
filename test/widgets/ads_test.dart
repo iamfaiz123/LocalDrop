@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:localdrop/app/app.dart';
 import 'package:localdrop/providers/session_controller.dart';

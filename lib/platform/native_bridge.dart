@@ -14,10 +14,12 @@ class NativeBridge {
 
   /// Keeps the host process alive while a session runs (Android foreground
   /// service; on iOS a background task that buys limited extra time).
-  Future<void> startHostingService(String sessionName) async {
+  /// [resumeConfig] (engine config JSON) lets Android restart the server by
+  /// itself if the OS kills and recreates the process while the app is closed.
+  Future<void> startHostingService(String sessionName, {String? resumeConfig}) async {
     if (!_supported) return;
     try {
-      await _channel.invokeMethod('startHosting', {'title': sessionName});
+      await _channel.invokeMethod('startHosting', {'title': sessionName, 'config': resumeConfig});
     } on MissingPluginException {
       // Not available in tests / unsupported platforms.
     }

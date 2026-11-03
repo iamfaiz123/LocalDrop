@@ -27,10 +27,13 @@ class MainActivity : FlutterActivity() {
                     requestNotificationPermission()
                     val intent = Intent(this, HostingService::class.java)
                         .putExtra(HostingService.EXTRA_TITLE, call.argument<String>("title") ?: "LocalDrop")
+                        .putExtra(HostingService.EXTRA_CONFIG, call.argument<String>("config"))
                     ContextCompat.startForegroundService(this, intent)
                     result.success(null)
                 }
                 "stopHosting" -> {
+                    // Session ended by the user: forget it so it is never restarted.
+                    HostingService.clearSaved(this)
                     stopService(Intent(this, HostingService::class.java))
                     result.success(null)
                 }

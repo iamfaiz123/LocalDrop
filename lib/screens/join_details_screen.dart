@@ -57,6 +57,7 @@ class _JoinDetailsScreenState extends State<JoinDetailsScreen> {
               'too_many_attempts' => e.message,
               'blocked' => 'The host blocked this device from the session.',
               'session_ended' => 'This session has ended.',
+              'already_in_session' => e.message,
               _ => e.message,
             });
       }

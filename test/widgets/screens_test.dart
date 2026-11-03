@@ -275,4 +275,16 @@ void main() {
     expect(find.text('Create Session'), findsOneWidget);
     expect(s.session.phase, SessionPhase.idle);
   });
+
+  testWidgets('home hides create/join while the device belongs to a session', (t) async {
+    final s = services();
+    s.session.locked = const LockedSession(SessionRole.host, 'Manali Trip 2026', 'Your session could not be restarted');
+    await pumpApp(t, s);
+    expect(find.byKey(const Key('activeSession')), findsOneWidget);
+    expect(find.text('You are hosting “Manali Trip 2026”'), findsOneWidget);
+    expect(find.text('Create Session'), findsNothing);
+    expect(find.text('Join Session'), findsNothing);
+    expect(find.text('Reconnect'), findsOneWidget);
+    expect(find.text('End session'), findsOneWidget);
+  });
 }
