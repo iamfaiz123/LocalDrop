@@ -551,6 +551,10 @@ async fn resume_after_host_restart() {
         .unwrap();
     let uid = v["upload_id"].as_str().unwrap().to_string();
     http.put(format!("{base}/api/uploads/{uid}?offset=0")).bearer_auth(&t).body(data[..120_000].to_vec()).send().await.unwrap();
+    // An open WebSocket writes "last seen" while closing; stop() must wait for it.
+    let ws_url = format!("{}/api/ws?token={}", base.replace("http://", "ws://"), t);
+    let (_ws, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
     engine.stop().await;
     // Simulate a crash that left unacknowledged bytes in the temp file.
     let part = dir.path().join("sessions").join(&sid).join("tmp").join(format!("{uid}.part"));

@@ -50,6 +50,8 @@ impl RunningEngine {
     }
 
     /// Stops the server. In-flight transfers get a short grace period.
+    /// Returns once background tasks (WebSockets, thumbnails) have released
+    /// the session, so its database is closed and can be reopened at once.
     pub async fn stop(self) {
         self.state.shutdown.cancel();
         self.janitor.abort();
@@ -57,6 +59,15 @@ impl RunningEngine {
         if tokio::time::timeout(Duration::from_secs(4), self.server).await.is_err() {
             abort.abort();
         }
+        let state = self.state;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while Arc::strong_count(&state) > 1 && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        if Arc::strong_count(&state) > 1 {
+            tracing::warn!("session state still referenced after stop");
+        }
+        drop(state);
     }
 
     pub fn status_json(&self) -> serde_json::Value {
