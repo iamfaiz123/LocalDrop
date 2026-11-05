@@ -47,6 +47,25 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Trip expense updates (.ldtrip) opened from WhatsApp or Files -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/vnd.localdrop.trip" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <!-- "Share to LocalDrop" with the file or the copied message text -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/vnd.localdrop.trip" />
+            </intent-filter>
         </activity>
         <!-- AdMob app id (set with -PadmobAppId=... ; defaults to Google's test app id). -->
         <meta-data

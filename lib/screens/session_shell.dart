@@ -12,6 +12,7 @@ import 'gallery_screen.dart';
 import 'host_lobby_screen.dart';
 import 'landing_screen.dart';
 import 'settings_screen.dart';
+import 'trips_screen.dart';
 import 'uploads_screen.dart';
 
 /// In-session scaffold: header + tabbed pages + bottom bar in the original
@@ -66,6 +67,11 @@ class SessionShellState extends State<SessionShell> with WidgetsBindingObserver 
           bottom: false,
           child: Column(children: [
             AppHeader(actions: [
+              IconButton(
+                tooltip: 'Trip expenses',
+                icon: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsScreen())),
+              ),
               if (s.isHost)
                 IconButton(
                   tooltip: 'Invite (QR code & PIN)',

@@ -84,6 +84,12 @@ class ApiClient {
       } on HttpException catch (e) {
         if (attempt == 0 && isStaleConnection(e.message)) continue;
         throw ApiException(0, 'network', 'Connection problem: ${e.message}');
+      } on OSError catch (e) {
+        // Some connection failures surface as a bare OSError.
+        if (attempt == 0 && isStaleConnection(e.message)) continue;
+        throw ApiException(0, 'network', 'Cannot reach the host (${e.message})');
+      } on IOException catch (e) {
+        throw ApiException(0, 'network', 'Connection problem: $e');
       } on FormatException {
         throw const ApiException(0, 'bad_address', 'That address is not valid');
       }
@@ -245,6 +251,10 @@ class ApiClient {
       throw ApiException(0, 'network', 'Connection to the host was lost (${e.osError?.message ?? e.message})');
     } on HttpException catch (e) {
       throw ApiException(0, 'network', 'Upload interrupted: ${e.message}');
+    } on OSError catch (e) {
+      throw ApiException(0, 'network', 'Connection to the host was lost (${e.message})');
+    } on IOException catch (e) {
+      throw ApiException(0, 'network', 'Upload interrupted: $e');
     }
   }
 

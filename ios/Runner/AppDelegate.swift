@@ -21,6 +21,9 @@ import UniformTypeIdentifiers
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LocalDropIncomingFile") {
+      IncomingFilePlugin.register(with: registrar)
+    }
     let channel = FlutterMethodChannel(
       name: "app.localdrop/native", binaryMessenger: engineBridge.applicationRegistrar.messenger())
     channel.setMethodCallHandler { [weak self] call, result in
@@ -111,5 +114,62 @@ import UniformTypeIdentifiers
       }
     }
     return nil
+  }
+}
+
+/// Receives trip expense files (.ldtrip) opened from WhatsApp, Files or the
+/// share sheet. Registered as a scene delegate so Flutter keeps forwarding
+/// URLs to other plugins. Dart is pinged and then pulls the content.
+final class IncomingFilePlugin: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
+  private var channel: FlutterMethodChannel?
+  private var pending: String?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let plugin = IncomingFilePlugin()
+    let channel = FlutterMethodChannel(name: "app.localdrop/import", binaryMessenger: registrar.messenger())
+    plugin.channel = channel
+    registrar.addMethodCallDelegate(plugin, channel: channel)
+    registrar.addApplicationDelegate(plugin)
+    registrar.addSceneDelegate(plugin)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "takePending" {
+      result(pending)
+      pending = nil
+    } else {
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  // Cold start with a file.
+  func scene(
+    _ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    if let url = connectionOptions?.urlContexts.first?.url { receive(url) }
+    return false
+  }
+
+  // App already running.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    guard let url = URLContexts.first?.url else { return false }
+    return receive(url)
+  }
+
+  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    return receive(url)
+  }
+
+  @discardableResult
+  private func receive(_ url: URL) -> Bool {
+    guard url.isFileURL else { return false }
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    guard let data = try? Data(contentsOf: url), data.count < 5_000_000,
+      let text = String(data: data, encoding: .utf8)
+    else { return false }
+    pending = text
+    channel?.invokeMethod("incoming", arguments: nil)
+    return true
   }
 }

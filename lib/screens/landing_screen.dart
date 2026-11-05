@@ -10,6 +10,7 @@ import 'common.dart';
 import 'create_session_screen.dart';
 import 'join_session_screen.dart';
 import 'session_shell.dart';
+import 'trips_screen.dart';
 
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
@@ -65,6 +66,13 @@ class LandingScreen extends StatelessWidget {
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JoinSessionScreen())),
             ),
           ],
+          const SizedBox(height: 4),
+          TextButton.icon(
+            key: const Key('tripExpenses'),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsScreen())),
+            icon: const Icon(Icons.receipt_long_rounded, color: AppColors.primary, size: 18),
+            label: const Text('Split trip expenses', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800)),
+          ),
           if (context.watch<AdService>().privacyOptionsRequired)
             TextButton(
               onPressed: () => context.read<AdService>().showPrivacyOptions(),

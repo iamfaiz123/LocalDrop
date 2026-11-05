@@ -25,6 +25,8 @@ dependencies:
     path: packages/localdrop_engine
   google_mobile_ads: ^9.2.0
   photo_manager: ^3.12.0
+  cryptography: ^2.9.0
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

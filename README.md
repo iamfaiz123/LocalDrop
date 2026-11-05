@@ -3,7 +3,9 @@
 Offline, original-quality photo and video sharing over a local Wi-Fi network or phone hotspot.
 No internet, cloud, accounts or compression. Share by swiping through your own photos
 (right = send to the pool, left = skip) or by selecting several. See [docs/FLOW.md](docs/FLOW.md).
-Ad slots are built in but ads are off until a later phase ([docs/ADS.md](docs/ADS.md)).
+Split trip expenses with a signed, server-free ledger that syncs through WhatsApp
+([docs/EXPENSES.md](docs/EXPENSES.md)). Ad slots are built in but ads are off until a later phase
+([docs/ADS.md](docs/ADS.md)).
 
 One person **hosts** a session on their phone. Friends join their hotspot, scan the QR code
 (or type the address / PIN) and everyone can upload, browse and download originals. Participants

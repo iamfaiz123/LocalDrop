@@ -30,6 +30,15 @@
 * Verified by unit + widget tests (drag gestures, buttons, undo, select, permission denied).
   Not yet exercised against a real photo library on a device.
 
+## Trip expenses
+* Signed (Ed25519), content-addressed ledger; expenses count only when the payer and everyone in
+  the split approve; removals and repayments need approval too; deterministic balances and
+  fewest-payments settle-up. Sync via `.ldtrip` file / `LD1:` code shared through WhatsApp.
+* Verified by unit tests simulating 4 phones (gossip convergence, tampering, forged approvals,
+  out-of-order arrival) and widget tests (create, invite → join, approve, add expense).
+* Opening `.ldtrip` from WhatsApp (Android intent filters, iOS document type) compiles in CI but is
+  not yet exercised on devices. See docs/EXPENSES.md for limits.
+
 ## Build status
 * `.github/workflows/build.yml` builds a release APK (Rust engine for arm64/armv7/x86_64 + Kotlin) on
   Linux and the iOS app (`--no-codesign`, Rust xcframework + Swift) on macOS, and runs all tests.

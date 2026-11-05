@@ -1,15 +1,22 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../ledger/identity.dart';
+import '../ledger/ledger_store.dart';
+import '../platform/incoming_imports.dart';
 import '../platform/native_bridge.dart';
+import '../providers/ledger_controller.dart';
 import '../providers/gallery_controller.dart';
 import '../providers/pool_controller.dart';
 import '../providers/session_controller.dart';
 import '../screens/landing_screen.dart';
 import '../screens/session_shell.dart';
+import '../screens/trips_screen.dart';
 import '../services/ads.dart';
 import '../services/download_manager.dart';
 import '../services/device_library.dart';
@@ -28,8 +35,10 @@ class AppServices {
   final DownloadManager downloads;
   final AdService ads;
   final PoolController pool;
+  final LedgerController ledger;
+  final IncomingImports incoming;
 
-  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads, this.ads, this.pool);
+  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads, this.ads, this.pool, this.ledger, this.incoming);
 
   factory AppServices.create({
     required EngineService engine,
@@ -42,6 +51,7 @@ class AppServices {
     AdService? ads,
     DeviceLibrary? library,
     UploadManager? uploads,
+    LedgerController? ledger,
   }) {
     final gallery = GalleryController();
     uploads ??= UploadManager(
@@ -60,7 +70,8 @@ class AppServices {
       native: native,
     );
     final pool = PoolController(library: library ?? PhotoManagerLibrary(), prefs: prefs, uploads: uploads);
-    return AppServices._(prefs, session, gallery, uploads, downloads, ads ?? NoAdService(), pool);
+    return AppServices._(prefs, session, gallery, uploads, downloads, ads ?? NoAdService(), pool,
+        ledger ?? LedgerController(store: MemoryLedgerStore(), keys: MemoryKeyStore()), IncomingImports());
   }
 
   /// Production wiring.
@@ -75,17 +86,59 @@ class AppServices {
       workDir: () async => tmp,
       tempDir: tmp.path,
       ads: createAdService(),
+      ledger: LedgerController(
+        store: FileLedgerStore(() async => support),
+        keys: SecureKeyStore(),
+        shareSink: (fileName, content, message) async {
+          final dir = Directory('${tmp.path}/share');
+          await dir.create(recursive: true);
+          final f = File('${dir.path}/$fileName');
+          await f.writeAsString(content, flush: true);
+          await SharePlus.instance.share(ShareParams(
+            text: message,
+            files: [XFile(f.path, name: fileName, mimeType: 'application/octet-stream')],
+          ));
+        },
+      ),
     );
   }
 }
 
-class LocalDropApp extends StatelessWidget {
+class LocalDropApp extends StatefulWidget {
   final AppServices services;
   final bool restoreOnStart;
 
   /// Overrides the first screen (tests).
   final Widget? home;
   const LocalDropApp({super.key, required this.services, this.restoreOnStart = true, this.home});
+
+  @override
+  State<LocalDropApp> createState() => _LocalDropAppState();
+}
+
+class _LocalDropAppState extends State<LocalDropApp> {
+  final _navigator = GlobalKey<NavigatorState>();
+  StreamSubscription<String>? _incoming;
+
+  AppServices get services => widget.services;
+
+  @override
+  void initState() {
+    super.initState();
+    // Trip expense files opened from WhatsApp land here.
+    _incoming = services.incoming.stream.listen((text) async {
+      await services.ledger.init();
+      final ctx = _navigator.currentContext;
+      if (ctx != null && ctx.mounted) await openImported(ctx, services.ledger, text);
+    });
+    services.incoming.start();
+  }
+
+  @override
+  void dispose() {
+    _incoming?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => MultiProvider(
@@ -97,12 +150,14 @@ class LocalDropApp extends StatelessWidget {
           ChangeNotifierProvider.value(value: services.downloads),
           ChangeNotifierProvider<AdService>.value(value: services.ads),
           ChangeNotifierProvider.value(value: services.pool),
+          ChangeNotifierProvider.value(value: services.ledger),
         ],
         child: MaterialApp(
+          navigatorKey: _navigator,
           title: 'LocalDrop',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
-          home: home ?? (restoreOnStart ? const _RestoreGate() : const LandingScreen()),
+          home: widget.home ?? (widget.restoreOnStart ? const _RestoreGate() : const LandingScreen()),
         ),
       );
 }
