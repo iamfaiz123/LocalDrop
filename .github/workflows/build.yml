@@ -109,3 +109,35 @@ jobs:
         run: flutter build ios --release --no-codesign
       - name: Check the engine framework is embedded
         run: test -f build/ios/iphoneos/Runner.app/Frameworks/LocalDropEngine.framework/LocalDropEngine
+
+  android-launch:
+    name: Android launch test (emulator)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: localdrop-android-apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install, launch and watch for crashes
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/android-smoke.sh
+      - name: Upload logcat and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-launch-logs
+          path: smoke/
+          retention-days: 14
