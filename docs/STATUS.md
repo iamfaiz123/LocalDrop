@@ -30,6 +30,14 @@
 * Verified by unit + widget tests (drag gestures, buttons, undo, select, permission denied).
   Not yet exercised against a real photo library on a device.
 
+## Trip planner
+* Itinerary by day/time with place and notes; majority vote confirms/drops items; per-activity
+  "I'm in"; organiser sets destination and dates; invitees can preview the plan before joining.
+  Same signed ledger and `.ldtrip` sharing as expenses.
+* Verified by unit tests (majority rules, vote changes, RSVP, withdrawal, organiser-only details,
+  invalid dates, WhatsApp itinerary text) and widget tests (preview → join → vote → I'm in,
+  add item on a trip day and share).
+
 ## Trip expenses
 * Signed (Ed25519), content-addressed ledger; expenses count only when the payer and everyone in
   the split approve; removals and repayments need approval too; deterministic balances and

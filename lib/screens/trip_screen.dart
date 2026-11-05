@@ -10,11 +10,24 @@ import '../utils/format.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/ui.dart';
 import 'common.dart';
+import 'plan_section.dart';
 
-class TripScreen extends StatelessWidget {
+class TripScreen extends StatefulWidget {
   final String tripId;
   final bool justCreated;
-  const TripScreen({super.key, required this.tripId, this.justCreated = false});
+
+  /// true = Plan tab, false = Expenses tab.
+  final bool startOnPlan;
+  const TripScreen({super.key, required this.tripId, this.justCreated = false, this.startOnPlan = true});
+
+  @override
+  State<TripScreen> createState() => _TripScreenState();
+}
+
+class _TripScreenState extends State<TripScreen> {
+  late bool _plan = widget.startOnPlan;
+  String get tripId => widget.tripId;
+  bool get justCreated => widget.justCreated;
 
   Future<void> _share(BuildContext context, {String? headline}) async {
     try {
@@ -50,16 +63,39 @@ class TripScreen extends StatelessWidget {
           Expanded(
             child: PageShell(
               title: t.name,
-              subtitle: '${t.members.length} people · ${formatMoney(t.totalSpent, t.currency)} agreed spending',
+              subtitle: [
+                if (t.destination.isNotEmpty) t.destination,
+                '${t.members.length} people',
+                if (!_plan) '${formatMoney(t.totalSpent, t.currency)} agreed spending',
+              ].join(' · '),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                if (!member)
-                  _JoinCard(tripId: tripId)
-                else ...[
+                if (!member) ...[
+                  _JoinCard(tripId: tripId),
+                  const SizedBox(height: 22),
+                  PlanSection(trip: t, me: me, readOnly: true),
+                ] else ...[
                   if (justCreated) ...[
-                    const InfoBanner('Invite your group: share this trip to your WhatsApp group. Friends open the file in LocalDrop and join.',
+                    const InfoBanner('Invite your group: tap Share and pick your trip’s WhatsApp group. Friends open the file in LocalDrop and join.',
                         icon: Icons.group_add_outlined),
                     const SizedBox(height: 12),
                   ],
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    Pill(
+                      t.planVotesNeeded(me).isEmpty ? 'Plan' : 'Plan · ${t.planVotesNeeded(me).length} to vote',
+                      selected: _plan,
+                      onTap: () => setState(() => _plan = true),
+                    ),
+                    Pill(
+                      pending.isEmpty ? 'Expenses' : 'Expenses · ${pending.length} to approve',
+                      selected: !_plan,
+                      onTap: () => setState(() => _plan = false),
+                    ),
+                  ]),
+                  const SizedBox(height: 18),
+                ],
+                if (member && _plan)
+                  PlanSection(trip: t, me: me)
+                else if (member) ...[
                   _BalanceCard(amount: bal, currency: t.currency),
                   const SizedBox(height: 12),
                   Row(children: [
@@ -276,14 +312,20 @@ class _StatusChip extends StatelessWidget {
     final (text, color) = removed
         ? ('Removed', AppColors.muted)
         : switch (p.status) {
-            ProposalStatus.confirmed => ('Agreed ✓', AppColors.green),
+            ProposalStatus.confirmed => ('Agreed', AppColors.green),
             ProposalStatus.rejected => ('Rejected', AppColors.red),
             ProposalStatus.pending => ('${p.approvals.length}/${p.required.length} approved', const Color(0xFFB07A00)),
           };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)),
-      child: Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (!removed && p.status == ProposalStatus.confirmed) ...[
+          Icon(Icons.check_rounded, size: 12, color: color),
+          const SizedBox(width: 3),
+        ],
+        Text(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+      ]),
     );
   }
 }
@@ -326,7 +368,8 @@ class _ApprovalCard extends StatelessWidget {
               child: OutlinedButton(
                 key: Key('reject-${p.id}'),
                 style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFFFD2D5)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    side: const BorderSide(color: Color(0xFFFFD2D5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 onPressed: () async {
                   final reason = await _askReason(context);
                   if (reason == null) return;
@@ -363,7 +406,8 @@ Future<String?> _askReason(BuildContext context) {
     builder: (d) => AlertDialog(
       backgroundColor: Colors.white,
       title: const Text('Why are you rejecting?', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-      content: TextField(controller: c, autofocus: true, maxLength: 120, decoration: const InputDecoration(hintText: 'e.g. It was ₹700, not ₹900')),
+      content: TextField(
+          controller: c, autofocus: true, maxLength: 120, decoration: const InputDecoration(hintText: 'e.g. It was ₹700, not ₹900')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
         TextButton(
@@ -397,9 +441,9 @@ class _ExpenseRow extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(e.title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 13, decoration: e.removed ? TextDecoration.lineThrough : null)),
-                Text('${trip.nameOf(e.paidBy)} paid · ${formatTimestamp(e.date)}', style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, decoration: e.removed ? TextDecoration.lineThrough : null)),
+                Text('${trip.nameOf(e.paidBy)} paid · ${formatTimestamp(e.date)}',
+                    style: const TextStyle(color: AppColors.muted, fontSize: 11)),
               ]),
             ),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -434,9 +478,8 @@ class _ExpenseRow extends StatelessWidget {
                       ? Icons.cancel
                       : (e.approvals.contains(m) ? Icons.verified_rounded : Icons.hourglass_top_rounded),
                   size: 18,
-                  color: e.rejections.containsKey(m)
-                      ? AppColors.red
-                      : (e.approvals.contains(m) ? AppColors.green : const Color(0xFFB07A00)),
+                  color:
+                      e.rejections.containsKey(m) ? AppColors.red : (e.approvals.contains(m) ? AppColors.green : const Color(0xFFB07A00)),
                 ),
                 const SizedBox(width: 8),
                 Expanded(child: Text(trip.nameOf(m), style: const TextStyle(fontWeight: FontWeight.w700))),
@@ -574,8 +617,8 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       }
       final sum = shares.values.fold(0, (a, b) => a + b);
       if (sum != amount) {
-        return setState(() => _error =
-            'Shares add up to ${formatMoney(sum, widget.trip.currency)}, not ${formatMoney(amount, widget.trip.currency)}');
+        return setState(
+            () => _error = 'Shares add up to ${formatMoney(sum, widget.trip.currency)}, not ${formatMoney(amount, widget.trip.currency)}');
       }
     } else {
       if (_split.isEmpty) return setState(() => _error = 'Pick who this was for');
@@ -636,8 +679,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                         child: TextField(
                           controller: _ctl(m.id),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                              isDense: true, hintText: '0', prefixText: Currency.of(t.currency).symbol),
+                          decoration: InputDecoration(isDense: true, hintText: '0', prefixText: Currency.of(t.currency).symbol),
                         ),
                       ),
                     ]),
@@ -662,8 +704,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
           PrimaryButton(key: const Key('saveExpense'), label: 'Add expense', icon: Icons.check, loading: _busy, onPressed: _save),
           const SizedBox(height: 6),
           const Center(
-            child: Text('The payer and everyone in the split must approve it.',
-                style: TextStyle(color: AppColors.muted, fontSize: 11)),
+            child: Text('The payer and everyone in the split must approve it.', style: TextStyle(color: AppColors.muted, fontSize: 11)),
           ),
         ]),
       ),

@@ -13,6 +13,12 @@ abstract class EventType {
   static const paymentAdd = 'payment.add';
   static const approve = 'approve';
   static const reject = 'reject';
+  // Trip planner
+  static const tripDetails = 'trip.details';
+  static const planAdd = 'plan.add';
+  static const planVote = 'plan.vote';
+  static const planRsvp = 'plan.rsvp';
+  static const planRemove = 'plan.remove';
 }
 
 /// Deterministic JSON (sorted keys, no whitespace) so every phone hashes

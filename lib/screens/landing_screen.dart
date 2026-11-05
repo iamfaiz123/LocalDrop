@@ -71,7 +71,7 @@ class LandingScreen extends StatelessWidget {
             key: const Key('tripExpenses'),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsScreen())),
             icon: const Icon(Icons.receipt_long_rounded, color: AppColors.primary, size: 18),
-            label: const Text('Split trip expenses', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800)),
+            label: const Text('Plan a trip & split costs', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800)),
           ),
           if (context.watch<AdService>().privacyOptionsRequired)
             TextButton(

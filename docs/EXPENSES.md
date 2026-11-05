@@ -1,4 +1,4 @@
-# Trip expenses (no server)
+# Trips: plan together & split expenses (no server)
 
 Split costs with your group. Nothing is stored on a server: every phone keeps its own copy of
 the trip's ledger, and copies are kept in sync by sharing a small file through WhatsApp (or any
@@ -17,6 +17,23 @@ messenger).
 If a file can't be opened directly, long-press the WhatsApp message › Copy, then tap
 **Paste from WhatsApp** in LocalDrop: the message contains an `LD1:` code with the same data.
 
+## Trip planner
+* **Trip details**: destination and dates (set when creating the trip; the organiser can edit).
+* **Add to plan**: what, which day (pick "Day 1/2/3…" when dates are set), optional time, place
+  and notes. Share the plan to WhatsApp; the message lists the itinerary with ✅ confirmed and 🗳️
+  open items.
+* **Vote** 👍 / 👎. An item is **confirmed when more than half of the trip's members vote yes**
+  and **dropped when more than half vote no**. Votes can be changed; the latest counts. The
+  proposer votes yes automatically and can withdraw their own item.
+* **Join an activity** ("I'm in") separately from voting, so you can see who is coming even to
+  things everyone agreed on.
+* People who were invited but haven't joined can already **see the plan**, then join to vote.
+* The Plan and Expenses tabs show what's waiting for you ("Plan · 2 to vote",
+  "Expenses · 1 to approve").
+
+Plan entries use the same signed ledger and the same `.ldtrip` file as expenses, so one share
+syncs both.
+
 ## Why it can be trusted without a server
 Blockchain ideas without mining:
 
@@ -32,7 +49,8 @@ Blockchain ideas without mining:
   rules, so all phones that have the same entries show the same numbers, regardless of the
   order messages arrived in. Every share carries all entries, so one forwarded message brings
   anyone fully up to date.
-* **Consensus = everyone involved agrees.** Expenses and their removal need every involved
+* **Plans use a majority vote** of current members (see above); one vote per person, signed.
+* **Consensus for money = everyone involved agrees.** Expenses and their removal need every involved
   person's approval; a single rejection blocks it. Repayments need the receiver. Entries cannot
   be edited; they are removed (with approval) and re-added.
 

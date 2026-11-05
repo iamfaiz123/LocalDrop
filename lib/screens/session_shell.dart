@@ -68,7 +68,7 @@ class SessionShellState extends State<SessionShell> with WidgetsBindingObserver 
           child: Column(children: [
             AppHeader(actions: [
               IconButton(
-                tooltip: 'Trip expenses',
+                tooltip: 'Trips: plan & split costs',
                 icon: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsScreen())),
               ),

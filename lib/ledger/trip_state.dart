@@ -52,6 +52,44 @@ class Payment extends Proposal {
   Payment(super.event, super.required, {required this.from, required this.to, required this.amount, required this.note});
 }
 
+enum PlanStatus { proposed, confirmed, dropped }
+
+/// An itinerary item. Confirmed when more than half of the trip's members
+/// vote yes, dropped when more than half vote no. People can change their
+/// vote (latest vote wins) and separately say whether they are going.
+class PlanItem {
+  final LedgerEvent event;
+  final String title;
+  final String day; // yyyy-MM-dd
+  final String? time; // HH:mm
+  final String place;
+  final String note;
+  final Map<String, bool> votes = {};
+  final Map<String, bool> rsvp = {};
+  bool withdrawn = false;
+  int _memberCount = 1;
+
+  PlanItem(this.event, {required this.title, required this.day, this.time, this.place = '', this.note = ''}) {
+    votes[event.author] = true;
+    rsvp[event.author] = true;
+  }
+
+  String get id => event.id;
+  int get yes => votes.values.where((v) => v).length;
+  int get no => votes.values.where((v) => !v).length;
+  int get memberCount => _memberCount;
+  Set<String> get going => {for (final e in rsvp.entries) if (e.value) e.key};
+  PlanStatus get status => withdrawn || no * 2 > _memberCount
+      ? PlanStatus.dropped
+      : yes * 2 > _memberCount
+          ? PlanStatus.confirmed
+          : PlanStatus.proposed;
+  DateTime get date => DateTime.parse(day);
+
+  /// For ordering within a day: untimed items last.
+  String get sortKey => '$day ${time ?? '99:99'} ${event.ts.toString().padLeft(15, '0')}';
+}
+
 class Settlement {
   final String from;
   final String to;
@@ -72,13 +110,23 @@ class TripState {
   final List<Expense> expenses;
   final List<Payment> payments;
 
+  /// Itinerary, ordered by day and time.
+  final List<PlanItem> plan;
+  final String destination;
+  final String? startDay;
+  final String? endDay;
+
   /// Signed entries that break the rules (e.g. an approval by someone not
   /// involved, a split that doesn't add up). Ignored, but counted.
   final int ignored;
   final int eventCount;
 
   TripState._(this.id, this.name, this.currency, this.createdBy, this.createdAt, this.members, this.expenses, this.payments,
-      this.ignored, this.eventCount);
+      this.plan, this.destination, this.startDay, this.endDay, this.ignored, this.eventCount);
+
+  /// Plan items [memberId] has not voted on yet (still undecided).
+  List<PlanItem> planVotesNeeded(String memberId) =>
+      plan.where((p) => p.status == PlanStatus.proposed && !p.votes.containsKey(memberId)).toList();
 
   /// Positive: the member is owed money. Negative: the member owes.
   Map<String, int> get balances {
@@ -223,14 +271,94 @@ class TripState {
     // 3) Decisions on removals; anything still unmatched points nowhere.
     applyDecisions();
     ignored += decisions.where((e) => !used.contains(e.id)).length;
+
+    // ---- Trip planner
+    var destination = (genesis.body['destination'] as String?)?.trim() ?? '';
+    String? startDay = _day(genesis.body['start']), endDay = _day(genesis.body['end']);
+    final plan = <String, PlanItem>{};
+    for (final e in events) {
+      if (!members.containsKey(e.author)) continue;
+      final target = e.body['target'];
+      switch (e.type) {
+        case EventType.tripDetails:
+          if (e.author != genesis.author) {
+            ignored++;
+            continue;
+          }
+          final d = (e.body['destination'] as String?)?.trim() ?? '';
+          destination = d.length > 80 ? d.substring(0, 80) : d;
+          startDay = _day(e.body['start']);
+          endDay = _day(e.body['end']);
+        case EventType.planAdd:
+          final item = _planItem(e);
+          if (item == null) {
+            ignored++;
+          } else {
+            plan[item.id] = item;
+          }
+        case EventType.planVote:
+          final item = plan[target];
+          final v = e.body['vote'];
+          if (item == null || v is! bool) {
+            ignored++;
+          } else {
+            item.votes[e.author] = v; // latest vote wins (events are time-ordered)
+          }
+        case EventType.planRsvp:
+          final item = plan[target];
+          final g = e.body['going'];
+          if (item == null || g is! bool) {
+            ignored++;
+          } else {
+            item.rsvp[e.author] = g;
+          }
+        case EventType.planRemove:
+          final item = plan[target];
+          if (item == null || item.event.author != e.author) {
+            ignored++;
+          } else {
+            item.withdrawn = true;
+          }
+        default:
+          break;
+      }
+    }
+    final planList = plan.values.toList()..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+    for (final p in planList) {
+      p._memberCount = members.length;
+    }
     return TripState._(tripId, name.isEmpty ? 'Trip' : name, currency, genesis.author, genesis.ts, members,
-        expenses.reversed.toList(), payments.reversed.toList(), ignored, events.length);
+        expenses.reversed.toList(), payments.reversed.toList(), planList, destination, startDay, endDay, ignored, events.length);
   }
 
   static String _name(Object? v) {
     final s = (v is String ? v : '').trim();
     if (s.isEmpty) return 'Someone';
     return s.length > 40 ? s.substring(0, 40) : s;
+  }
+
+  static String? _day(Object? v) {
+    if (v is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(v)) return null;
+    final d = DateTime.tryParse(v);
+    if (d == null) return null;
+    // Reject impossible dates like 2026-02-31 (DateTime would roll them over).
+    final back = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    return back == v ? v : null;
+  }
+
+  static PlanItem? _planItem(LedgerEvent e) {
+    final b = e.body;
+    final title = (b['title'] as String?)?.trim() ?? '';
+    final day = _day(b['day']);
+    final time = b['time'];
+    if (title.isEmpty || title.length > 80 || day == null) return null;
+    if (time != null && (time is! String || !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(time))) return null;
+    String clip(Object? v, int n) {
+      final s = (v is String ? v : '').trim();
+      return s.length > n ? s.substring(0, n) : s;
+    }
+
+    return PlanItem(e, title: title, day: day, time: time as String?, place: clip(b['place'], 80), note: clip(b['note'], 300));
   }
 
   static Expense? _expense(LedgerEvent e, Map<String, Member> members) {

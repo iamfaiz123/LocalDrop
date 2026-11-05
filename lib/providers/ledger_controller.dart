@@ -79,11 +79,21 @@ class LedgerController extends ChangeNotifier {
 
   // ------------------------------------------------------------- actions
 
-  Future<TripState> createTrip({required String name, required String myName, String currency = 'INR'}) async {
+  Future<TripState> createTrip({
+    required String name,
+    required String myName,
+    String currency = 'INR',
+    String destination = '',
+    String? start,
+    String? end,
+  }) async {
     final g = await LedgerEvent.create(_me!, trip: '', type: EventType.tripCreate, body: {
       'name': name.trim(),
       'currency': currency,
       'creator_name': myName.trim(),
+      if (destination.trim().isNotEmpty) 'destination': destination.trim(),
+      if (start != null) 'start': start,
+      if (end != null) 'end': end,
     });
     _events[g.id] = [g];
     await store.save(g.id, _events[g.id]!);
@@ -125,6 +135,68 @@ class LedgerController extends ChangeNotifier {
 
   Future<void> recordPayment(String tripId, {required String from, required String to, required int amount, String note = ''}) =>
       _append(tripId, EventType.paymentAdd, {'from': from, 'to': to, 'amount': amount, 'note': note});
+
+  // ------------------------------------------------------------- planner
+
+  static String dayString(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> setTripDetails(String tripId, {required String destination, String? start, String? end}) =>
+      _append(tripId, EventType.tripDetails, {
+        'destination': destination.trim(),
+        if (start != null) 'start': start,
+        if (end != null) 'end': end,
+      });
+
+  Future<LedgerEvent> addPlanItem(String tripId,
+          {required String title, required DateTime day, String? time, String place = '', String note = ''}) =>
+      _append(tripId, EventType.planAdd, {
+        'title': title.trim(),
+        'day': dayString(day),
+        if (time != null) 'time': time,
+        if (place.trim().isNotEmpty) 'place': place.trim(),
+        if (note.trim().isNotEmpty) 'note': note.trim(),
+      });
+
+  Future<void> votePlan(String tripId, String itemId, bool yes) => _append(tripId, EventType.planVote, {'target': itemId, 'vote': yes});
+
+  Future<void> rsvp(String tripId, String itemId, bool going) => _append(tripId, EventType.planRsvp, {'target': itemId, 'going': going});
+
+  Future<void> withdrawPlanItem(String tripId, String itemId) => _append(tripId, EventType.planRemove, {'target': itemId});
+
+  /// WhatsApp text for the itinerary.
+  String planMessage(String tripId) {
+    final s = _states[tripId]!;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    String fmt(String day) {
+      final d = DateTime.parse(day);
+      return '${d.day} ${months[d.month - 1]}';
+    }
+
+    final items = s.plan.where((p) => p.status != PlanStatus.dropped).toList();
+    final lines = <String>[
+      '🗺️ ${s.name}${s.destination.isEmpty ? '' : ' · ${s.destination}'}',
+      if (s.startDay != null) '${fmt(s.startDay!)}${s.endDay != null ? ' – ${fmt(s.endDay!)}' : ''}',
+      '',
+      for (final p in items.take(12))
+        '${p.status == PlanStatus.confirmed ? '✅' : '🗳️'} ${fmt(p.day)}${p.time == null ? '' : ' ${p.time}'} · ${p.title}'
+            '${p.place.isEmpty ? '' : ' @ ${p.place}'} (${p.going.length} going)',
+      if (items.length > 12) '…and ${items.length - 12} more',
+      if (items.isEmpty) 'No plans yet — add ideas in LocalDrop!',
+      '',
+      'Open the attached file in LocalDrop to join, vote and say if you’re in.',
+    ];
+    return lines.join('\n');
+  }
+
+  Future<void> sharePlan(String tripId) async {
+    final sink = shareSink;
+    if (sink == null) return;
+    final code = packet(tripId).toCode();
+    final msg = planMessage(tripId) +
+        (code.length <= 6000 ? '\n\nOr copy this message and tap “Paste from WhatsApp” in LocalDrop:\n$code' : '');
+    await sink(fileName(tripId), packet(tripId).toFile(), msg);
+  }
 
   Future<void> deleteTripFromThisPhone(String tripId) async {
     _events.remove(tripId);

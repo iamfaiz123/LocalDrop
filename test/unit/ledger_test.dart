@@ -205,4 +205,95 @@ void main() {
     expect(split.values.fold<int>(0, (a, b) => a + b), 1000);
     expect(split, {'a': 334, 'b': 333, 'c': 333});
   });
+
+  group('trip planner', () {
+    Future<void> syncAll() async {
+      for (final p in [riya, karan, meera]) {
+        await send(p, aarav, trip);
+      }
+      for (final p in [riya, karan, meera]) {
+        await send(aarav, p, trip);
+      }
+    }
+
+    test('an item is confirmed when more than half vote yes; votes can change', () async {
+      final rafting = await riya.addPlanItem(trip, title: 'River rafting', day: DateTime(2026, 3, 13), time: '10:30', place: 'Kullu');
+      await syncAll();
+      var item = aarav.trip(trip)!.plan.single;
+      expect(item.status, PlanStatus.proposed, reason: '1 of 4 is not a majority');
+      expect(aarav.trip(trip)!.planVotesNeeded(aarav.myId).single.id, rafting.id);
+
+      await aarav.votePlan(trip, rafting.id, true);
+      await syncAll();
+      expect(aarav.trip(trip)!.plan.single.status, PlanStatus.proposed, reason: '2 of 4 is exactly half');
+
+      await karan.votePlan(trip, rafting.id, true);
+      await syncAll();
+      item = meera.trip(trip)!.plan.single;
+      expect(item.status, PlanStatus.confirmed);
+      expect(item.yes, 3);
+
+      // Karan changes his mind; latest vote wins → back to proposed.
+      await karan.votePlan(trip, rafting.id, false);
+      await syncAll();
+      expect(aarav.trip(trip)!.plan.single.status, PlanStatus.proposed);
+    });
+
+    test('majority no drops an item; going is separate from voting', () async {
+      final club = await karan.addPlanItem(trip, title: 'Night club', day: DateTime(2026, 3, 14));
+      await syncAll();
+      await aarav.votePlan(trip, club.id, false);
+      await riya.votePlan(trip, club.id, false);
+      await meera.votePlan(trip, club.id, false);
+      await meera.rsvp(trip, club.id, true); // voted no, but still going if it happens
+      await syncAll();
+      final item = aarav.trip(trip)!.plan.single;
+      expect(item.status, PlanStatus.dropped);
+      expect(item.going, {karan.myId, meera.myId});
+    });
+
+    test('only the proposer can withdraw, only the organiser sets trip details', () async {
+      final hike = await riya.addPlanItem(trip, title: 'Hampta Pass hike', day: DateTime(2026, 3, 15));
+      await syncAll();
+      await aarav.withdrawPlanItem(trip, hike.id); // not his item
+      await karan.setTripDetails(trip, destination: 'Goa'); // not the organiser
+      await aarav.setTripDetails(trip, destination: 'Manali', start: '2026-03-12', end: '2026-03-16');
+      await syncAll();
+      var s = riya.trip(trip)!;
+      expect(s.plan.single.status, isNot(PlanStatus.dropped));
+      expect(s.destination, 'Manali');
+      expect((s.startDay, s.endDay), ('2026-03-12', '2026-03-16'));
+      expect(s.ignored, 2);
+
+      await riya.withdrawPlanItem(trip, hike.id);
+      s = riya.trip(trip)!;
+      expect(s.plan.single.status, PlanStatus.dropped);
+    });
+
+    test('items are ordered by day and time; invalid dates are rejected', () async {
+      await aarav.addPlanItem(trip, title: 'Dinner', day: DateTime(2026, 3, 12), time: '20:00');
+      await aarav.addPlanItem(trip, title: 'Breakfast', day: DateTime(2026, 3, 12), time: '08:00');
+      await aarav.addPlanItem(trip, title: 'Free day', day: DateTime(2026, 3, 13));
+      await aarav.addPlanItem(trip, title: 'Arrive', day: DateTime(2026, 3, 11));
+      expect(aarav.trip(trip)!.plan.map((p) => p.title), ['Arrive', 'Breakfast', 'Dinner', 'Free day']);
+
+      // A hand-made entry with an impossible date is ignored by everyone.
+      final bad = await LedgerEvent.create(await Identity.fromSeed(List.filled(32, 1)),
+          trip: trip, type: EventType.planAdd, body: {'title': 'x', 'day': '2026-02-31'});
+      await riya.importText(SyncPacket(trip, 'x', [...aarav.packet(trip).events, bad]).toFile());
+      expect(riya.trip(trip)!.plan.length, 4);
+    });
+
+    test('itinerary message for WhatsApp', () async {
+      await aarav.setTripDetails(trip, destination: 'Manali', start: '2026-03-12', end: '2026-03-16');
+      final e = await aarav.addPlanItem(trip, title: 'Solang Valley', day: DateTime(2026, 3, 12), time: '09:00');
+      await send(aarav, riya, trip);
+      await riya.votePlan(trip, e.id, true);
+      await karan.importText(aarav.packet(trip).toFile());
+      final msg = aarav.planMessage(trip);
+      expect(msg, contains('Manali Trip · Manali'));
+      expect(msg, contains('12 Mar – 16 Mar'));
+      expect(msg, contains('12 Mar 09:00 · Solang Valley (1 going)'));
+    });
+  });
 }
