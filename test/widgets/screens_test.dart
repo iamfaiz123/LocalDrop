@@ -149,7 +149,7 @@ void main() {
     expect(find.text('2 members · 3 items'), findsOneWidget);
     expect(find.byType(MediaTile), findsNWidgets(3));
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
-    expect(find.text('Upload photos & videos'), findsOneWidget);
+    expect(find.text('Add to pool'), findsOneWidget);
     expect(find.text('CONNECTED'), findsOneWidget);
   });
 

@@ -1,11 +1,15 @@
 # Advertising (Google AdMob)
 
+> **Status: OFF by default.** Ads are planned for a later phase. The layout keeps its ad slots
+> (they take no space), and everything below is ready: build with `--dart-define=ADS_ENABLED=true`.
+
 LocalDrop shows ads with [`google_mobile_ads`](https://pub.dev/packages/google_mobile_ads).
 
 ## Where ads appear
 | Placement | Format |
 |---|---|
 | Home screen | Anchored adaptive banner (bottom) |
+| Drop to pool | Anchored adaptive banner (bottom) |
 | Gallery, Uploads, Dashboard tabs | Anchored adaptive banner above the tab bar |
 | After a session ends ("Back to home") or a participant leaves | Interstitial, at most once every 3 minutes |
 
@@ -42,6 +46,6 @@ Until you do, **Google test ads are shown and earn nothing.**
 6. Store declarations: Play Console "Contains ads" = yes, Data safety (device/advertising ID, diagnostics
    collected by the ads SDK); App Store privacy labels likewise.
 
-Turn ads off entirely with `--dart-define=ADS_ENABLED=false`.
+Ads are off unless the build passes `--dart-define=ADS_ENABLED=true`.
 
 Never click your own live ads; use test IDs or register test devices while developing.

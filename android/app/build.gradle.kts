@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -36,7 +38,7 @@ android {
             // Falls back to debug keys so `flutter run --release` works locally.
             val keyProps = rootProject.file("key.properties")
             signingConfig = if (keyProps.exists()) {
-                val p = java.util.Properties().apply { keyProps.inputStream().use { load(it) } }
+                val p = Properties().apply { keyProps.inputStream().use { load(it) } }
                 signingConfigs.create("release") {
                     storeFile = file(p.getProperty("storeFile"))
                     storePassword = p.getProperty("storePassword")

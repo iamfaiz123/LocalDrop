@@ -10,7 +10,7 @@ import '../theme.dart';
 import '../utils/format.dart';
 import '../widgets/ui.dart';
 import 'common.dart';
-import 'gallery_screen.dart';
+import 'pool_screen.dart';
 
 enum _Tab { uploading, completed, downloads }
 
@@ -73,7 +73,7 @@ class _UploadsScreenState extends State<UploadsScreen> {
           OutlineAction(
             label: canUpload ? 'Add more files' : 'Uploads are turned off by the host',
             icon: Icons.add,
-            onPressed: canUpload ? () => pickAndUpload(context) : null,
+            onPressed: canUpload ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PoolScreen())) : null,
           ),
       ]),
     );

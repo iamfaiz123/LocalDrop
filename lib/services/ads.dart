@@ -11,10 +11,12 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 ///                     --dart-define=ADMOB_INTERSTITIAL_ANDROID=ca-app-pub-xxx/zzz
 ///
 /// Without them Google's official *test* units are used, which always serve
-/// test ads and never earn money. `--dart-define=ADS_ENABLED=false` turns
-/// ads off completely.
+/// test ads and never earn money. Ads are OFF by default (planned for a
+/// later phase); `--dart-define=ADS_ENABLED=true` turns them on. Ad slots stay
+/// in the layout and take no space while ads are off.
 class AdConfig {
-  static const enabled = bool.fromEnvironment('ADS_ENABLED', defaultValue: true);
+  /// Off until the advertising phase; build with --dart-define=ADS_ENABLED=true to turn on.
+  static const enabled = bool.fromEnvironment('ADS_ENABLED', defaultValue: false);
 
   // Google sample ad units: https://developers.google.com/admob/flutter/test-ads
   static const _testBannerAndroid = 'ca-app-pub-3940256099942544/9214589741';

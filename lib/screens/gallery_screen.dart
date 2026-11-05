@@ -9,6 +9,7 @@ import '../services/upload_manager.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
 import 'media_viewer_screen.dart';
+import 'pool_screen.dart';
 import 'selection_screen.dart';
 
 const _videoExtensions = {'mp4', 'm4v', 'mov', '3gp', '3g2', 'webm', 'mkv', 'avi'};
@@ -137,7 +138,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   icon: Icons.photo_library_outlined,
                   title: g.filter == MediaFilter.all ? 'No photos or videos yet' : 'Nothing here yet',
                   detail: g.filter == MediaFilter.all
-                      ? 'Tap “Upload photos & videos” to share the first ones.'
+                      ? 'Tap “Add to pool” and swipe right on the photos you want to share.'
                       : 'Try another filter.',
                 ),
               )
@@ -185,9 +186,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
         child: Row(children: [
           Expanded(
             child: PrimaryButton(
-              label: canUpload ? 'Upload photos & videos' : 'Uploads are turned off',
+              label: canUpload ? 'Add to pool' : 'Uploads are turned off',
               icon: Icons.add,
-              onPressed: canUpload ? () => pickAndUpload(context) : null,
+              onPressed: canUpload ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PoolScreen())) : null,
             ),
           ),
           const SizedBox(width: 8),

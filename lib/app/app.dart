@@ -6,11 +6,13 @@ import 'package:provider/provider.dart';
 
 import '../platform/native_bridge.dart';
 import '../providers/gallery_controller.dart';
+import '../providers/pool_controller.dart';
 import '../providers/session_controller.dart';
 import '../screens/landing_screen.dart';
 import '../screens/session_shell.dart';
 import '../services/ads.dart';
 import '../services/download_manager.dart';
+import '../services/device_library.dart';
 import '../services/engine_service.dart';
 import '../services/media_saver.dart';
 import '../services/preferences.dart';
@@ -25,8 +27,9 @@ class AppServices {
   final UploadManager uploads;
   final DownloadManager downloads;
   final AdService ads;
+  final PoolController pool;
 
-  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads, this.ads);
+  AppServices._(this.prefs, this.session, this.gallery, this.uploads, this.downloads, this.ads, this.pool);
 
   factory AppServices.create({
     required EngineService engine,
@@ -37,9 +40,11 @@ class AppServices {
     String? tempDir,
     NativeBridge native = const NativeBridge(),
     AdService? ads,
+    DeviceLibrary? library,
+    UploadManager? uploads,
   }) {
     final gallery = GalleryController();
-    final uploads = UploadManager(
+    uploads ??= UploadManager(
       native: native,
       tempDir: tempDir,
       store: JsonUploadStore(write: prefs.setRaw, read: prefs.getRaw),
@@ -54,7 +59,8 @@ class AppServices {
       downloads: downloads,
       native: native,
     );
-    return AppServices._(prefs, session, gallery, uploads, downloads, ads ?? NoAdService());
+    final pool = PoolController(library: library ?? PhotoManagerLibrary(), prefs: prefs, uploads: uploads);
+    return AppServices._(prefs, session, gallery, uploads, downloads, ads ?? NoAdService(), pool);
   }
 
   /// Production wiring.
@@ -90,6 +96,7 @@ class LocalDropApp extends StatelessWidget {
           ChangeNotifierProvider.value(value: services.uploads),
           ChangeNotifierProvider.value(value: services.downloads),
           ChangeNotifierProvider<AdService>.value(value: services.ads),
+          ChangeNotifierProvider.value(value: services.pool),
         ],
         child: MaterialApp(
           title: 'LocalDrop',

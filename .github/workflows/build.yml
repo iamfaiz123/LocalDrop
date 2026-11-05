@@ -8,10 +8,13 @@ on:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FLUTTER_VERSION: "3.47.9"
+  # Faster CI builds of the engine (release builds for stores keep full LTO).
+  CARGO_PROFILE_RELEASE_LTO: thin
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
 
 jobs:
   test:

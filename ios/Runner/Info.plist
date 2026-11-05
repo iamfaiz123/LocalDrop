@@ -80,7 +80,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>LocalDrop uses the camera to scan a session's QR code.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>LocalDrop lets you pick photos and videos to share with your group.</string>
+	<string>LocalDrop shows your photos and videos so you can swipe the ones you want to share with your group.</string>
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>LocalDrop saves photos and videos you download from your group to your library.</string>
 	<key>NSLocalNetworkUsageDescription</key>

@@ -122,16 +122,21 @@ class UploadManager extends ChangeNotifier {
 
   void resumeAll() => _pump();
 
-  Future<void> addFiles(Iterable<({String path, String name, bool isVideo})> files) async {
+  /// Queues files for upload and returns the created tasks.
+  Future<List<UploadTask>> addFiles(Iterable<({String path, String name, bool isVideo})> files) async {
+    final added = <UploadTask>[];
     for (final f in files) {
       final file = File(f.path);
       if (!await file.exists()) continue;
       final size = await file.length();
-      tasks.add(UploadTask(id: '${DateTime.now().microsecondsSinceEpoch}-${_seq++}', path: f.path, name: f.name, size: size, isVideo: f.isVideo));
+      final t = UploadTask(id: '${DateTime.now().microsecondsSinceEpoch}-${_seq++}', path: f.path, name: f.name, size: size, isVideo: f.isVideo);
+      tasks.add(t);
+      added.add(t);
     }
     await _persist();
     _pump();
     notifyListeners();
+    return added;
   }
 
   void pause(UploadTask t) {

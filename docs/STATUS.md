@@ -22,8 +22,20 @@
 * `image_picker` is assumed to return original bytes when no resize/quality options are passed;
   confirm byte-identity (SHA-256) on devices, especially iOS HEIC and Android videos.
 
+## Drop to pool
+* Swipe deck over the phone's own library (`photo_manager`): right = queue the original for upload,
+  left = skip; undo; decisions remembered per session; Select mode for many at once; "In pool" marks.
+* Originals are read untouched (`originFile`; Android requests ACCESS_MEDIA_LOCATION so GPS EXIF is not
+  stripped). iCloud-only items that are not on the phone are reported instead of uploaded.
+* Verified by unit + widget tests (drag gestures, buttons, undo, select, permission denied).
+  Not yet exercised against a real photo library on a device.
+
+## Build status
+* `.github/workflows/build.yml` builds a release APK (Rust engine for arm64/armv7/x86_64 + Kotlin) on
+  Linux and the iOS app (`--no-codesign`, Rust xcframework + Swift) on macOS, and runs all tests.
+
 ## Ads
-* AdMob banners/interstitial and UMP consent are wired with Google **test IDs**; real IDs must be supplied
+* **Off by default** (later phase). AdMob banners/interstitial and UMP consent are wired with Google **test IDs**; real IDs must be supplied
   (docs/ADS.md). Verified by tests: no layout space and no SDK calls when ads are unavailable, interstitial
   only at the session-end break. Real ad loading has not been seen on a device (no Android/iOS build here).
 

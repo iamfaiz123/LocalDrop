@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:localdrop/models/models.dart';
+import 'package:localdrop/services/device_library.dart';
 import 'package:localdrop/services/download_manager.dart';
 import 'package:localdrop/services/engine_service.dart';
 import 'package:localdrop/services/preferences.dart';
@@ -95,5 +96,72 @@ Future<void> waitFor(bool Function() condition, {Duration timeout = const Durati
   while (!condition()) {
     if (sw.elapsed > timeout) throw StateError('Timed out waiting for ${reason ?? 'condition'}');
     await Future<void>.delayed(const Duration(milliseconds: 25));
+  }
+}
+
+/// Phone library with [n] items, newest first; every 4th is a video.
+class FakeDeviceLibrary implements DeviceLibrary {
+  final int n;
+  LibraryAccess accessResult;
+  final Set<String> unreadable = {};
+  int requests = 0;
+  FakeDeviceLibrary(this.n, {this.accessResult = LibraryAccess.full});
+
+  List<DeviceAsset> get all => [
+        for (var i = 0; i < n; i++)
+          DeviceAsset(
+            id: 'asset-$i',
+            isVideo: i % 4 == 3,
+            createdAt: DateTime(2026, 3, 12).subtract(Duration(minutes: i)),
+            duration: i % 4 == 3 ? const Duration(seconds: 32) : Duration.zero,
+          ),
+      ];
+
+  @override
+  Future<LibraryAccess> requestAccess() async {
+    requests++;
+    return accessResult;
+  }
+
+  @override
+  Future<int> count() async => n;
+  @override
+  Future<List<DeviceAsset>> page(int page, int size) async => all.skip(page * size).take(size).toList();
+  @override
+  Future<Uint8List?> thumbnail(DeviceAsset asset, int size) async => null;
+  @override
+  Future<({String path, String name})> original(DeviceAsset asset) async {
+    if (unreadable.contains(asset.id)) throw const DeviceLibraryException('This item is stored in iCloud and is not on this phone.');
+    return (path: '/library/${asset.id}', name: '${asset.id}.${asset.isVideo ? 'mp4' : 'jpg'}');
+  }
+
+  @override
+  Future<void> openSettings() async {}
+  @override
+  Future<void> manageLimitedSelection() async {}
+}
+
+/// Records queued uploads without touching the file system or network.
+class RecordingUploads extends UploadManager {
+  final queued = <String>[];
+  final cancelled = <String>[];
+  RecordingUploads() : super(store: MemoryUploadStore());
+
+  @override
+  Future<List<UploadTask>> addFiles(Iterable<({String path, String name, bool isVideo})> files) async {
+    final out = <UploadTask>[];
+    for (final f in files) {
+      queued.add(f.name);
+      final t = UploadTask(id: f.name, path: f.path, name: f.name, size: 1, isVideo: f.isVideo);
+      tasks.add(t);
+      out.add(t);
+    }
+    return out;
+  }
+
+  @override
+  Future<void> cancel(UploadTask t) async {
+    cancelled.add(t.name);
+    t.state = TransferState.cancelled;
   }
 }
