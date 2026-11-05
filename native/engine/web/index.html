@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F6FF">
+<meta name="referrer" content="no-referrer">
+<title>LocalDrop</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><img src="icon.svg" alt="" width="26" height="26"><span>LocalDrop</span></div>
+  <div class="conn" id="conn" hidden><span class="dot"></span><span id="connText">Connected</span></div>
+</header>
+
+<main id="app">
+  <!-- Loading -->
+  <section id="v-loading" class="view center">
+    <div class="spinner"></div>
+    <p class="muted" id="loadingText">Connecting to the host…</p>
+  </section>
+
+  <!-- Error / ended / removed -->
+  <section id="v-message" class="view center" hidden>
+    <div class="badge-icon" id="msgIcon">!</div>
+    <h1 id="msgTitle">Something went wrong</h1>
+    <p class="muted" id="msgText"></p>
+    <button class="btn primary" id="msgRetry">Try again</button>
+  </section>
+
+  <!-- Join -->
+  <section id="v-join" class="view" hidden>
+    <div class="join-hero"><div class="circle">👥</div></div>
+    <h1 class="center-text" id="joinSession">Join session</h1>
+    <p class="muted center-text" id="joinHost">Enter your details to join</p>
+    <form id="joinForm" novalidate>
+      <label for="joinName">Your name</label>
+      <input id="joinName" autocomplete="nickname" maxlength="40" placeholder="Your name" required>
+      <label for="joinPin">Session PIN</label>
+      <input id="joinPin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="• • • • • •" required>
+      <p class="error" id="joinError" hidden></p>
+      <button class="btn primary" type="submit" id="joinBtn">Join Session →</button>
+    </form>
+    <p class="note">Your files travel directly to the host over this Wi-Fi network. Nothing is uploaded to the internet.</p>
+  </section>
+
+  <!-- Pending approval -->
+  <section id="v-pending" class="view center" hidden>
+    <div class="spinner"></div>
+    <h1>Waiting for approval</h1>
+    <p class="muted">The host needs to let you in. Keep this page open.</p>
+    <button class="btn ghost" id="pendingCancel">Cancel</button>
+  </section>
+
+  <!-- Gallery -->
+  <section id="v-gallery" class="view" hidden>
+    <div class="gal-head">
+      <div>
+        <h1 id="galTitle">Session</h1>
+        <p class="muted" id="galSub"></p>
+      </div>
+      <button class="icon-btn" id="menuBtn" aria-label="Menu">⋯</button>
+    </div>
+    <div class="banner warn" id="banner" hidden></div>
+    <div class="pills" id="kindPills">
+      <button class="pill selected" data-kind="all">All</button>
+      <button class="pill" data-kind="photo">Photos</button>
+      <button class="pill" data-kind="video">Videos</button>
+      <button class="pill" data-kind="fav">♥ Favorites</button>
+    </div>
+    <div class="row-between filters">
+      <select id="uploaderFilter" aria-label="Filter by person"><option value="">Everyone</option></select>
+      <button class="link" id="sortBtn">Newest first</button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden>
+      <div class="badge-icon">🖼️</div>
+      <h2>No photos or videos yet</h2>
+      <p class="muted">Tap “Upload” to share the first ones.</p>
+    </div>
+    <div class="center"><div class="spinner small" id="moreSpinner" hidden></div></div>
+    <div id="sentinel"></div>
+  </section>
+</main>
+
+<!-- Bottom bar -->
+<nav class="bottombar" id="bottombar" hidden>
+  <div id="normalBar" class="bar-row">
+    <button class="btn primary grow" id="uploadBtn">＋ Upload photos &amp; videos</button>
+    <button class="icon-btn" id="selectBtn" aria-label="Select">☑</button>
+    <button class="icon-btn" id="transfersBtn" aria-label="Transfers"><span>⇅</span><span class="count" id="transferCount" hidden>0</span></button>
+  </div>
+  <div id="selectBar" class="bar-row" hidden>
+    <button class="link" id="selCancel">Cancel</button>
+    <span class="grow center-text strong" id="selCount">0 selected</span>
+    <button class="icon-btn" id="selAll" aria-label="Select all">☰</button>
+    <button class="icon-btn" id="selDownload" aria-label="Download">⬇</button>
+    <button class="icon-btn danger" id="selDelete" aria-label="Delete">🗑</button>
+  </div>
+</nav>
+<input type="file" id="fileInput" accept="image/*,video/*" multiple hidden>
+
+<!-- Viewer -->
+<div class="viewer" id="viewer" hidden>
+  <div class="viewer-top">
+    <button class="icon-btn dark" id="vClose" aria-label="Close">←</button>
+    <span id="vCount"></span>
+    <button class="icon-btn dark" id="vDelete" aria-label="Delete">🗑</button>
+  </div>
+  <div class="viewer-stage" id="vStage">
+    <button class="nav prev" id="vPrev" aria-label="Previous">‹</button>
+    <div class="viewer-media" id="vMedia"></div>
+    <button class="nav next" id="vNext" aria-label="Next">›</button>
+  </div>
+  <div class="viewer-bottom">
+    <div class="avatar" id="vAvatar"></div>
+    <div class="grow"><div class="strong" id="vName"></div><div class="small" id="vTime"></div></div>
+    <a class="icon-btn dark" id="vDownload" aria-label="Download">⬇</a>
+    <button class="icon-btn dark" id="vFav" aria-label="Favorite">♡</button>
+  </div>
+</div>
+
+<!-- Sheets -->
+<div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+<div class="sheet" id="transfersSheet" hidden>
+  <div class="sheet-handle"></div>
+  <div class="row-between"><h2>Transfers</h2><button class="link" id="clearDone">Clear finished</button></div>
+  <div class="pills small">
+    <button class="pill selected" data-tab="active" id="tabActive">Uploading</button>
+    <button class="pill" data-tab="done" id="tabDone">Completed</button>
+  </div>
+  <div id="transferList" class="list"></div>
+  <p class="muted center-text" id="transferEmpty">No transfers yet.</p>
+  <button class="btn outline" id="addMore">＋ Add more files</button>
+</div>
+<div class="sheet" id="menuSheet" hidden>
+  <div class="sheet-handle"></div>
+  <h2>Session</h2>
+  <div class="list" id="memberList"></div>
+  <p class="small muted" id="storageText"></p>
+  <p class="small muted">Connection: HTTP on your local network (not encrypted). Only people with the PIN can see the gallery.</p>
+  <button class="btn danger-outline" id="leaveBtn">Leave session</button>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

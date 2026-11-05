@@ -1,0 +1,68 @@
+// Packages the Rust engine for Android. The shared libraries are produced by
+// native/scripts/build-android.sh (cargo-ndk) into src/main/jniLibs/<abi>/.
+// The build runs automatically before preBuild unless -Plocaldrop.skipRustBuild
+// is set (e.g. when CI supplies prebuilt libraries).
+
+group = "app.localdrop.engine"
+version = "1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:9.1.0")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace = "app.localdrop.engine"
+    compileSdk = 36
+    ndkVersion = android.ndkVersion
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ["src/main/jniLibs"]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+def buildRust = tasks.register("buildRustEngine", Exec) {
+    description = "Cross-compiles the LocalDrop Rust engine with cargo-ndk"
+    def script = file("${projectDir}/../../../native/scripts/build-android.sh")
+    def release = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
+    workingDir = projectDir
+    commandLine "bash", script.absolutePath, release ? "release" : "debug", file("src/main/jniLibs").absolutePath
+    doFirst {
+        // Prefer the NDK Gradle resolved; otherwise cargo-ndk finds one via
+        // ANDROID_NDK_HOME / ANDROID_NDK_ROOT / ANDROID_HOME.
+        def ndk = null
+        try { ndk = android.ndkDirectory } catch (Exception ignored) { }
+        if (ndk != null && ndk.exists()) {
+            environment "ANDROID_NDK_HOME", ndk.absolutePath
+        }
+    }
+}
+
+if (!project.hasProperty("localdrop.skipRustBuild")) {
+    tasks.named("preBuild").configure { dependsOn(buildRust) }
+}

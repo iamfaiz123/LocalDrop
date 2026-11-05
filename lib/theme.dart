@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const bg = Color(0xFFF7F6FF);
@@ -12,11 +11,17 @@ class AppColors {
   static const border = Color(0xFFE9E6F3);
   static const green = Color(0xFF19A875);
   static const red = Color(0xFFE34B59);
+  static const amber = Color(0xFF8A5A00);
 }
+
+/// Plus Jakarta Sans is bundled in assets/fonts so the app renders
+/// identically without internet access.
+const appFontFamily = 'PlusJakartaSans';
 
 ThemeData buildTheme() {
   final base = ThemeData(
     useMaterial3: true,
+    fontFamily: appFontFamily,
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       primary: AppColors.primary,
@@ -25,15 +30,21 @@ ThemeData buildTheme() {
     scaffoldBackgroundColor: AppColors.bg,
   );
   return base.copyWith(
-    textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme).apply(
+    textTheme: base.textTheme.apply(
       bodyColor: AppColors.text,
       displayColor: AppColors.text,
+      fontFamily: appFontFamily,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.bg,
       foregroundColor: AppColors.text,
       elevation: 0,
       centerTitle: false,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.text,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

@@ -1,0 +1,175 @@
+import AVFoundation
+import Flutter
+import ImageIO
+import UIKit
+import UniformTypeIdentifiers
+
+@main
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+  private let worker = DispatchQueue(label: "app.localdrop.native", qos: .userInitiated)
+
+  override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(didEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification, object: nil)
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LocalDropIncomingFile") {
+      IncomingFilePlugin.register(with: registrar)
+    }
+    let channel = FlutterMethodChannel(
+      name: "app.localdrop/native", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call, result: result)
+    }
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    switch call.method {
+    case "startHosting":
+      // iOS cannot keep a server running indefinitely in the background.
+      // Ask for the limited extra time iOS grants and keep the screen awake
+      // while the app is in front. See docs/PLATFORM_NOTES.md.
+      UIApplication.shared.isIdleTimerDisabled = true
+      beginBackgroundTask()
+      result(nil)
+    case "stopHosting":
+      UIApplication.shared.isIdleTimerDisabled = false
+      endBackgroundTask()
+      result(nil)
+    case "keepScreenOn":
+      UIApplication.shared.isIdleTimerDisabled = (args["on"] as? Bool) ?? false
+      result(nil)
+    case "thumbnail":
+      guard let path = args["path"] as? String else {
+        result(FlutterError(code: "bad_args", message: "path is required", details: nil))
+        return
+      }
+      let video = (args["video"] as? Bool) ?? false
+      let maxSize = (args["maxSize"] as? Int) ?? 480
+      worker.async {
+        let data = video ? Self.videoThumbnail(path, maxSize) : Self.imageThumbnail(path, maxSize)
+        DispatchQueue.main.async { result(data.map { FlutterStandardTypedData(bytes: $0) }) }
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Works with both the scene and the classic lifecycle.
+  @objc private func didEnterBackground() {
+    if UIApplication.shared.isIdleTimerDisabled { beginBackgroundTask() }
+  }
+
+  private func beginBackgroundTask() {
+    guard backgroundTask == .invalid else { return }
+    backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "LocalDropHosting") { [weak self] in
+      self?.endBackgroundTask()
+    }
+  }
+
+  private func endBackgroundTask() {
+    guard backgroundTask != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(backgroundTask)
+    backgroundTask = .invalid
+  }
+
+  private static func jpeg(_ image: CGImage) -> Data? {
+    let data = NSMutableData()
+    guard
+      let dest = CGImageDestinationCreateWithData(
+        data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil)
+    else { return nil }
+    CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+    return CGImageDestinationFinalize(dest) ? data as Data : nil
+  }
+
+  /// Handles HEIC/HEIF and applies EXIF orientation without decoding the full image.
+  static func imageThumbnail(_ path: String, _ maxSize: Int) -> Data? {
+    guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
+    let opts: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: maxSize,
+    ]
+    guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+    return jpeg(cg)
+  }
+
+  static func videoThumbnail(_ path: String, _ maxSize: Int) -> Data? {
+    let gen = AVAssetImageGenerator(asset: AVURLAsset(url: URL(fileURLWithPath: path)))
+    gen.appliesPreferredTrackTransform = true
+    gen.maximumSize = CGSize(width: maxSize, height: maxSize)
+    for seconds in [1.0, 0.0] {
+      if let cg = try? gen.copyCGImage(at: CMTime(seconds: seconds, preferredTimescale: 600), actualTime: nil) {
+        return jpeg(cg)
+      }
+    }
+    return nil
+  }
+}
+
+/// Receives trip expense files (.ldtrip) opened from WhatsApp, Files or the
+/// share sheet. Registered as a scene delegate so Flutter keeps forwarding
+/// URLs to other plugins. Dart is pinged and then pulls the content.
+final class IncomingFilePlugin: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
+  private var channel: FlutterMethodChannel?
+  private var pending: String?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let plugin = IncomingFilePlugin()
+    let channel = FlutterMethodChannel(name: "app.localdrop/import", binaryMessenger: registrar.messenger())
+    plugin.channel = channel
+    registrar.addMethodCallDelegate(plugin, channel: channel)
+    registrar.addApplicationDelegate(plugin)
+    registrar.addSceneDelegate(plugin)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "takePending" {
+      result(pending)
+      pending = nil
+    } else {
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  // Cold start with a file.
+  func scene(
+    _ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    if let url = connectionOptions?.urlContexts.first?.url { receive(url) }
+    return false
+  }
+
+  // App already running.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    guard let url = URLContexts.first?.url else { return false }
+    return receive(url)
+  }
+
+  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    return receive(url)
+  }
+
+  @discardableResult
+  private func receive(_ url: URL) -> Bool {
+    guard url.isFileURL else { return false }
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    guard let data = try? Data(contentsOf: url), data.count < 5_000_000,
+      let text = String(data: data, encoding: .utf8)
+    else { return false }
+    pending = text
+    channel?.invokeMethod("incoming", arguments: nil)
+    return true
+  }
+}
