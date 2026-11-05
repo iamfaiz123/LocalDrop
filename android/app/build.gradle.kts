@@ -34,6 +34,8 @@ android {
 
     buildTypes {
         release {
+            // Keep rules for classes created by reflection (see proguard-rules.pro).
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Release signing: provide android/key.properties (see docs/BUILD.md).
             // Falls back to debug keys so `flutter run --release` works locally.
             val keyProps = rootProject.file("key.properties")
