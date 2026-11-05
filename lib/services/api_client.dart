@@ -58,30 +58,46 @@ class ApiClient {
     List<int>? bytes,
     ContentType? contentType,
   }) async {
-    try {
-      final req = await _http.openUrl(method, uri(path, query)).timeout(timeout ?? this.timeout);
-      authHeaders.forEach(req.headers.set);
-      headers?.forEach(req.headers.set);
-      if (json != null) {
-        final body = utf8.encode(jsonEncode(json));
-        req.headers.contentType = ContentType.json;
-        req.contentLength = body.length;
-        req.add(body);
-      } else if (bytes != null) {
-        req.headers.contentType = contentType ?? ContentType.binary;
-        req.contentLength = bytes.length;
-        req.add(bytes);
+    for (var attempt = 0;; attempt++) {
+      try {
+        final req = await _http.openUrl(method, uri(path, query)).timeout(timeout ?? this.timeout);
+        // The retry never reuses a pooled keep-alive connection.
+        if (attempt > 0) req.persistentConnection = false;
+        authHeaders.forEach(req.headers.set);
+        headers?.forEach(req.headers.set);
+        if (json != null) {
+          final body = utf8.encode(jsonEncode(json));
+          req.headers.contentType = ContentType.json;
+          req.contentLength = body.length;
+          req.add(body);
+        } else if (bytes != null) {
+          req.headers.contentType = contentType ?? ContentType.binary;
+          req.contentLength = bytes.length;
+          req.add(bytes);
+        }
+        return await req.close().timeout(timeout ?? this.timeout);
+      } on TimeoutException {
+        throw ApiException(0, 'timeout', 'The host did not respond in time ($method $path)');
+      } on SocketException catch (e) {
+        if (attempt == 0 && isStaleConnection(e.osError?.message ?? e.message)) continue;
+        throw ApiException(0, 'network', 'Cannot reach the host (${e.osError?.message ?? e.message})');
+      } on HttpException catch (e) {
+        if (attempt == 0 && isStaleConnection(e.message)) continue;
+        throw ApiException(0, 'network', 'Connection problem: ${e.message}');
+      } on FormatException {
+        throw const ApiException(0, 'bad_address', 'That address is not valid');
       }
-      return await req.close().timeout(timeout ?? this.timeout);
-    } on TimeoutException {
-      throw const ApiException(0, 'timeout', 'The host did not respond in time');
-    } on SocketException catch (e) {
-      throw ApiException(0, 'network', 'Cannot reach the host (${e.osError?.message ?? e.message})');
-    } on HttpException catch (e) {
-      throw ApiException(0, 'network', 'Connection problem: ${e.message}');
-    } on FormatException {
-      throw const ApiException(0, 'bad_address', 'That address is not valid');
     }
+  }
+
+  /// Errors that mean a reused keep-alive connection had already been closed
+  /// by the host, so the request never reached it and is safe to send again.
+  static bool isStaleConnection(String message) {
+    final m = message.toLowerCase();
+    return m.contains('broken pipe') ||
+        m.contains('connection reset') ||
+        m.contains('connection closed before full header') ||
+        m.contains('connection closed while receiving data');
   }
 
   static Future<Map<String, dynamic>> decode(HttpClientResponse r) async {

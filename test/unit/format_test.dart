@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:localdrop/models/models.dart';
+import 'package:localdrop/services/api_client.dart';
 import 'package:localdrop/utils/format.dart';
 
 void main() {
@@ -58,5 +59,13 @@ void main() {
     final s = SessionInfo.fromJson({'id': 'x', 'name': 'Trip', 'host_name': 'A', 'upload_permission': 'host_only'});
     expect(s.uploadsOpen, isFalse);
     expect(s.downloadsOpen, isTrue);
+  });
+
+  test('only stale keep-alive failures are retried', () {
+    expect(ApiClient.isStaleConnection('Broken pipe'), isTrue);
+    expect(ApiClient.isStaleConnection('Connection reset by peer'), isTrue);
+    expect(ApiClient.isStaleConnection('Connection closed before full header was received'), isTrue);
+    expect(ApiClient.isStaleConnection('Connection refused'), isFalse, reason: 'host down: report, do not retry');
+    expect(ApiClient.isStaleConnection('No route to host'), isFalse);
   });
 }
