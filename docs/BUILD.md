@@ -4,7 +4,7 @@
 * Flutter 3.47+ (Dart 3.x), Rust stable (1.80+)
 * Android: Android SDK + NDK, `cargo install cargo-ndk`,
   `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`
-* iOS (macOS only): Xcode 16+, `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
+* iOS (macOS only): Xcode 26+ (current plugins need the Swift 6.2 toolchain), `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
 
 ## Android
 ```bash
