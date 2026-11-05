@@ -1,0 +1,103 @@
+name: Build & test
+
+on:
+  push:
+    branches: [main, master, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.9"
+
+jobs:
+  test:
+    name: Tests (Rust + Flutter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/engine
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Engine tests
+        run: cargo test --manifest-path native/engine/Cargo.toml
+      - name: Engine lint (incl. Android JNI entry points)
+        run: cargo clippy --manifest-path native/engine/Cargo.toml --features jni-check --all-targets -- -D warnings
+      - name: Build engine for Flutter FFI tests
+        run: cargo build --manifest-path native/engine/Cargo.toml --lib
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/engine
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build release APK (Rust engine + Kotlin + Dart)
+        run: flutter build apk --release
+      - name: Check the engine is packaged for every ABI
+        run: |
+          unzip -l build/app/outputs/flutter-apk/app-release.apk | grep liblocaldrop_engine.so
+          test "$(unzip -l build/app/outputs/flutter-apk/app-release.apk | grep -c liblocaldrop_engine.so)" -ge 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: localdrop-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+  ios:
+    name: iOS app (no codesign)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/engine
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build LocalDropEngine.xcframework
+        run: native/scripts/build-ios.sh
+      - run: flutter pub get
+      - name: Build iOS app (Rust engine + Swift + Dart)
+        run: flutter build ios --release --no-codesign
+      - name: Check the engine framework is embedded
+        run: test -f build/ios/iphoneos/Runner.app/Frameworks/LocalDropEngine.framework/LocalDropEngine

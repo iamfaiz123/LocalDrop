@@ -13,6 +13,9 @@ import UniformTypeIdentifiers
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(didEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification, object: nil)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -58,8 +61,8 @@ import UniformTypeIdentifiers
     }
   }
 
-  override func applicationDidEnterBackground(_ application: UIApplication) {
-    super.applicationDidEnterBackground(application)
+  /// Works with both the scene and the classic lifecycle.
+  @objc private func didEnterBackground() {
     if UIApplication.shared.isIdleTimerDisabled { beginBackgroundTask() }
   }
 
@@ -78,7 +81,10 @@ import UniformTypeIdentifiers
 
   private static func jpeg(_ image: CGImage) -> Data? {
     let data = NSMutableData()
-    guard let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+    guard
+      let dest = CGImageDestinationCreateWithData(
+        data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil)
+    else { return nil }
     CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
     return CGImageDestinationFinalize(dest) ? data as Data : nil
   }
@@ -99,9 +105,11 @@ import UniformTypeIdentifiers
     let gen = AVAssetImageGenerator(asset: AVURLAsset(url: URL(fileURLWithPath: path)))
     gen.appliesPreferredTrackTransform = true
     gen.maximumSize = CGSize(width: maxSize, height: maxSize)
-    guard let cg = try? gen.copyCGImage(at: CMTime(seconds: 1, preferredTimescale: 600), actualTime: nil)
-      ?? gen.copyCGImage(at: .zero, actualTime: nil)
-    else { return nil }
-    return jpeg(cg)
+    for seconds in [1.0, 0.0] {
+      if let cg = try? gen.copyCGImage(at: CMTime(seconds: seconds, preferredTimescale: 600), actualTime: nil) {
+        return jpeg(cg)
+      }
+    }
+    return nil
   }
 }
